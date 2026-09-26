@@ -1,0 +1,26 @@
+alter table public.opportunities
+  add column if not exists customer_type text not null default 'corporate',
+  add column if not exists branch_name text,
+  add column if not exists customer_contact text,
+  add column if not exists prefecture text,
+  add column if not exists address text,
+  add column if not exists team_visibility text not null default 'department',
+  add column if not exists sales_type text,
+  add column if not exists sales_process text,
+  add column if not exists activity_location text,
+  add column if not exists activity_contact text,
+  add column if not exists activity_attendees text,
+  add column if not exists activity_from date,
+  add column if not exists activity_to date,
+  add column if not exists quote_amount numeric(14,0) not null default 0,
+  add column if not exists order_amount numeric(14,0) not null default 0,
+  add column if not exists vendor text,
+  add column if not exists proposed_lease_fee numeric(14,0) not null default 0,
+  add column if not exists products text[] not null default '{}',
+  add column if not exists deal_stages text[] not null default '{}',
+  add column if not exists contract_copy boolean,
+  add column if not exists detail_copy boolean,
+  add column if not exists lease_start_date date,
+  add column if not exists lease_end_date date;
+create index if not exists opportunities_expected_close_idx on public.opportunities (organization_id, expected_close_date);
+create index if not exists opportunities_amount_idx on public.opportunities (organization_id, expected_amount);

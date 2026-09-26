@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+:root { --background: #f4f6f8; --foreground: #18212f; }
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: Arial, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--background); color: var(--foreground); font-family: Arial, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; }
+button { cursor: pointer; }
+.event-blue { background: #fffaf0; color: #18212f; border: 1px solid #ead27b; border-left: 4px solid #e5ad00; }
+.event-violet { background: #f0eafb; color: #6d45a2; border-left: 3px solid #8b65bc; }
+.event-amber { background: #fff3d9; color: #8a5a00; border-left: 3px solid #d69b25; }

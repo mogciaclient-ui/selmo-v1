@@ -1,0 +1,14 @@
+"use client";
+
+import { useActionState, useEffect, useRef } from "react";
+import { LoaderCircle, Plus, X } from "lucide-react";
+import { createUser, type UserActionState } from "@/app/users/actions";
+
+const initial: UserActionState = {};
+export function UserDialog({ departments }: { departments: { id: string; name: string }[] }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [state, action, pending] = useActionState(createUser, initial);
+  useEffect(() => { if (state.success) ref.current?.close(); }, [state.success]);
+  return <><button onClick={() => ref.current?.showModal()} className="flex items-center gap-2 rounded-xl bg-[#f2c94c] px-4 py-2.5 text-sm font-semibold text-slate-900"><Plus size={18} />ユーザーを追加</button><dialog ref={ref} aria-labelledby="new-user-title" className="m-auto w-[min(560px,calc(100%-2rem))] rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl backdrop:bg-slate-950/40"><form action={action} className="p-6"><div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-amber-800">ユーザー管理</p><h2 id="new-user-title" className="mt-1 text-xl font-bold">ユーザーを追加</h2></div><button type="button" aria-label="閉じる" onClick={() => ref.current?.close()} className="p-2 text-slate-400"><X size={20} /></button></div><div className="mt-6 space-y-4"><Field label="氏名" name="name" /><Field label="メールアドレス" name="email" type="email" /><label className="block text-sm font-semibold">部署<select name="departmentId" required className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal">{departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label><label className="block text-sm font-semibold">権限<select name="role" required className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal"><option value="sales_rep">一般ユーザー</option><option value="department_admin">部門管理者</option><option value="organization_admin">全体管理者</option></select></label>{state.message && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{state.message}</p>}<p className="text-xs leading-5 text-slate-400">作成後、利用者はログイン画面の「パスワードを設定・再設定する」から初回パスワードを設定します。</p></div><div className="mt-6 flex justify-end"><button disabled={pending} className="flex items-center gap-2 rounded-xl bg-[#f2c94c] px-5 py-2.5 text-sm font-semibold text-slate-900 disabled:opacity-50">{pending && <LoaderCircle size={17} className="animate-spin" />}追加する</button></div></form></dialog></>;
+}
+function Field({ label, name, type = "text" }: { label: string; name: string; type?: string }) { return <label className="block text-sm font-semibold">{label}<input name={name} type={type} required className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal outline-none focus:border-amber-500" /></label>; }
