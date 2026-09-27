@@ -24,13 +24,14 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const authorized = await authorize(id); if (authorized.response) return authorized.response; const user = authorized.user!;
-  const { data } = await user.db.from("activity_ai_analyses").select("raw_transcript").eq("organization_id", user.organizationId).eq("activity_id", id).maybeSingle();
+  const { data } = await user.db.from("activity_ai_analyses").select("raw_transcript,audio_metrics").eq("organization_id", user.organizationId).eq("activity_id", id).maybeSingle();
   if (!data?.raw_transcript) return Response.json({ message: "再分析できる文字起こしがありません。" }, { status: 404 });
   try {
     const evaluated = await analyzeSalesTranscript(data.raw_transcript);
     const updatedAt = new Date().toISOString();
-    const { error } = await user.db.from("activity_ai_analyses").update({ status: "completed", separated_transcript: evaluated.result.dialogue, analysis: evaluated.result, model: evaluated.model, error_message: null, updated_at: updatedAt }).eq("organization_id", user.organizationId).eq("activity_id", id);
+    const analysis = { ...evaluated.result, ...(data.audio_metrics ? { audioMetrics: data.audio_metrics } : {}) };
+    const { error } = await user.db.from("activity_ai_analyses").update({ status: "completed", separated_transcript: evaluated.result.dialogue, analysis, model: evaluated.model, error_message: null, updated_at: updatedAt }).eq("organization_id", user.organizationId).eq("activity_id", id);
     if (error) throw error;
-    return Response.json({ status: "completed", analysis: evaluated.result, raw_transcript: data.raw_transcript, separated_transcript: evaluated.result.dialogue, updated_at: updatedAt });
+    return Response.json({ status: "completed", analysis, raw_transcript: data.raw_transcript, separated_transcript: evaluated.result.dialogue, updated_at: updatedAt });
   } catch (error) { return Response.json({ message: error instanceof Error ? error.message : "再分析に失敗しました。" }, { status: 500 }); }
 }

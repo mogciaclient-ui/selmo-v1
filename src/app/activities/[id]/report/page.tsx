@@ -1,4 +1,6 @@
 import { ArrowLeft, CalendarDays, Clock3, UserRound } from "lucide-react";
+
+export const maxDuration = 300;
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActivityReportForm } from "@/components/activities/activity-report-form";

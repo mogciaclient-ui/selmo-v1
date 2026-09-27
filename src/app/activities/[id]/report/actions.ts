@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
 import { analyzeSalesTranscript } from "@/lib/openai/analyze-sales-transcript";
 import { syncOpportunityFromActivity } from "@/lib/activities/sync-opportunity-from-activity";
+import { processActivityAudio } from "@/lib/activities/process-activity-audio";
 
 export type DetailedReportState = { success?: boolean; message?: string };
 const text = (max = 500) => z.string().trim().max(max);
@@ -19,6 +21,7 @@ const reportSchema = z.object({
   model: text(200), proposedModel: text(200), currentLeaseCompany: text(200), leaseCompany: text(200),
   currentLeaseFee: z.union([z.literal(""), z.coerce.number().int().min(0)]), proposedLeaseFee: z.union([z.literal(""), z.coerce.number().int().min(0)]),
   remainingLeasePayments: z.union([z.literal(""), z.coerce.number().int().min(0)]), pricingSetting: text(100), aiTranscript: text(30000),
+  audioPath: text(1000), audioContentType: text(100),
 });
 
 export async function saveDetailedActivityReport(_: DetailedReportState, formData: FormData): Promise<DetailedReportState> {
@@ -32,6 +35,7 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
   if (context.role === "department_admin") activityQuery = activityQuery.in("department_id", context.departmentIds);
   const { data: activity, error: lookupError } = await activityQuery.maybeSingle();
   if (lookupError || !activity) return { message: "この活動を登録する権限がありません。" };
+  if (input.audioPath && !input.audioPath.startsWith(`${context.organizationId}/activities/${input.id}/`)) return { message: "アップロードした音声の保存先が不正です。" };
 
   let startsAt: Date | undefined;
   let endsAt: Date | undefined;
@@ -43,7 +47,7 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
   }
 
   const list = (name: string) => formData.getAll(name).flatMap((value) => String(value).split(/[、,]/)).map((value) => value.trim()).filter(Boolean);
-  const analysisRequested = Boolean(input.aiTranscript);
+  const analysisRequested = Boolean(input.aiTranscript || input.audioPath);
   const common = {
     registrationType: input.registrationType, salesType: input.salesType, salesProcess: input.salesProcess, activityStatus: input.activityStatus,
     activityDate: input.activityDate, product: input.product, customerContact: input.customerContact, progressStep: input.progressStep, attendees: list("attendees"),
@@ -62,7 +66,7 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
     currentLeaseCompany: input.currentLeaseCompany, leaseCompany: input.leaseCompany,
     currentLeaseFee: input.currentLeaseFee, proposedLeaseFee: input.proposedLeaseFee,
     remainingLeasePayments: input.remainingLeasePayments, pricingSetting: input.pricingSetting,
-    aiTranscript: input.aiTranscript, aiAnalysisRequested: analysisRequested,
+    aiTranscript: input.aiTranscript, audioPath: input.audioPath, aiAnalysisRequested: analysisRequested,
     speakerSeparationStatus: analysisRequested ? "pending" : null,
     aiAnalysisStatus: analysisRequested ? "waiting_for_speaker_separation" : null,
   };
@@ -112,11 +116,14 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
   if (analysisRequested) {
     const { error: queueError } = await context.db.from("activity_ai_analyses").upsert({
       organization_id: context.organizationId, activity_id: input.id, employee_id: context.employeeId,
-      status: "processing", raw_transcript: input.aiTranscript, separated_transcript: null, analysis: null,
-      model: null, error_message: null, updated_at: now,
+      status: input.audioPath ? "pending" : "processing", raw_transcript: input.aiTranscript, separated_transcript: null, analysis: null,
+      audio_path: input.audioPath || null, model: null, error_message: null, updated_at: now,
     }, { onConflict: "activity_id" });
     if (queueError) {
       message = queueError.code === "42P01" ? "活動は保存しました。AI分析用のDB更新を適用してください。" : "活動は保存しましたが、AI分析を開始できませんでした。";
+    } else if (input.audioPath) {
+      after(() => processActivityAudio({ organizationId: context.organizationId, activityId: input.id, employeeId: activity.employee_id, audioPath: input.audioPath }));
+      message = "活動を保存しました。音声は自動で分析され、完了後にカレンダーから確認できます。";
     } else {
       try {
         const { model, result } = await analyzeSalesTranscript(input.aiTranscript);
