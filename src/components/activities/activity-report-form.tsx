@@ -1,9 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { CheckCircle2, LoaderCircle } from "lucide-react";
+import { CheckCircle2, FileAudio, LoaderCircle } from "lucide-react";
 import { saveDetailedActivityReport, type DetailedReportState } from "@/app/activities/[id]/report/actions";
-import { AudioAnalysisUpload } from "@/components/activities/audio-analysis-upload";
 
 type Member = { id: string; name: string };
 type Defaults = { date: string; startTime: string; endTime: string; product: string; ownerId: string; progressStep: string };
@@ -22,9 +21,10 @@ export function ActivityReportForm({ activityId, defaults, members }: { activity
       <div className="text-xs font-bold text-slate-500">活動担当者<div className="mt-1.5 flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-800">{members.find((item) => item.id === defaults.ownerId)?.name ?? "ログイン中の担当者"}</div></div><TimeRange start={defaults.startTime} end={defaults.endTime}/><div className="sm:col-span-2"><Area name="details" label="活動詳細"/></div>
       <Choice label="訪問回数" name="visitCount" options={["初回訪問", "再訪問", "3回目", "4回目以降"]}/><Field name="appointmentOwner" label="アポ担当"/><Field name="fieldOwner" label="現場担当"/><Field name="companionOwner" label="同行担当"/><Select name="appointmentType" label="アポ内容" options={["新規アポ", "再訪アポ", "フォロー"]} placeholder="選択してください"/><Field name="negotiator" label="商談担当者"/><Field name="negotiatorTitle" label="商談担当者役職"/><Choice label="商談ステージ" name="dealStage" options={["アプローチ", "現状確認", "提案", "クロージング"]}/><Field name="vendor" label="販社"/><Field name="model" label="機種"/><Field name="proposedModel" label="提案機種"/><Field name="currentLeaseCompany" label="現在リース会社"/><Field name="leaseCompany" label="リース会社"/><Field name="currentLeaseFee" label="現在リース料金" type="number"/><Field name="proposedLeaseFee" label="提案リース料金" type="number"/><Field name="remainingLeasePayments" label="リース残回数" type="number"/><Select name="pricingSetting" label="料金設定" options={["料金UP", "料金維持", "料金DOWN"]} placeholder="選択してください"/>
     </Grid></Section>
-    <Section title="AI商談分析" description="音声を選択するだけで、文字起こし・営業と顧客の識別・詳細分析を自動で行います。待たずに活動登録を完了できます。">
-      <AudioAnalysisUpload activityId={activityId}/>
-      <details className="rounded-xl border border-slate-200"><summary className="cursor-pointer px-4 py-3 text-xs font-bold text-slate-500">文字起こし済みテキストを使う場合</summary><div className="border-t p-4"><label className="block text-xs font-bold text-slate-500">商談・通話の文字起こし<textarea name="aiTranscript" rows={8} className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-sm font-normal leading-7 outline-none focus:border-amber-500"/></label></div></details>
+    <Section title="AI商談分析" description="文字起こし済みの商談テキストを貼り付けると、活動登録後に話者分離と詳細分析を行います。">
+      <input type="hidden" name="audioPath" value=""/><input type="hidden" name="audioContentType" value=""/>
+      <label className="block text-xs font-bold text-slate-600">商談・通話の文字起こし<textarea name="aiTranscript" rows={12} placeholder="文字起こし済みの全文を、そのまま貼り付けてください。" className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-sm font-normal leading-7 outline-none focus:border-amber-500"/></label>
+      <div className="flex items-start gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-slate-500"><FileAudio size={20} className="mt-0.5 shrink-0"/><div><p className="text-sm font-bold text-slate-700">音声アップロードは準備中です</p><p className="mt-1 text-xs leading-6">60〜120分の長時間音声やWAVなどの大容量ファイルへ安定して対応できるよう調整しています。現在は文字起こし済みテキストをご利用ください。</p></div></div>
     </Section>
     {state.message && !state.success && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{state.message}</p>}{state.success && <p className="flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-sm font-semibold text-emerald-700"><CheckCircle2 size={18}/>活動内容を保存しました。</p>}
     <div className="flex justify-end border-t border-slate-200 pt-5"><button disabled={pending || state.success} className="flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#f2c94c] px-5 py-3 text-sm font-bold text-slate-900 disabled:opacity-50">{pending && <LoaderCircle size={18} className="animate-spin"/>}{pending ? "保存中" : "活動を登録する"}</button></div>
