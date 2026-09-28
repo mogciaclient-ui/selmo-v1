@@ -8,7 +8,7 @@ import type { CustomerSearchResult } from "@/domain/customers/types";
 type DepartmentOption = { id: string; name: string };
 const initialState: CreateActivityState = {};
 
-export function AddScheduleDialog({ departments, defaultDate, trigger = "button", defaultCustomer, defaultOpportunity, openOnMount = false }: { departments: DepartmentOption[]; defaultDate: string; trigger?: "button" | "cell" | "menu" | "hidden"; defaultCustomer?: CustomerSearchResult; defaultOpportunity?: { id: string; name: string; salesType?: string | null; salesProcess?: string | null; progressStep?: string | null }; openOnMount?: boolean }) {
+export function AddScheduleDialog({ departments, defaultDate, trigger = "button", defaultCustomer, defaultOpportunity, openOnMount = false }: { departments: DepartmentOption[]; defaultDate: string; trigger?: "button" | "cell" | "menu" | "pickup" | "hidden"; defaultCustomer?: CustomerSearchResult; defaultOpportunity?: { id: string; name: string; salesType?: string | null; salesProcess?: string | null; progressStep?: string | null }; openOnMount?: boolean }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [state, action, pending] = useActionState(createActivity, initialState);
   const [query, setQuery] = useState(defaultCustomer?.name ?? "");
@@ -65,9 +65,9 @@ export function AddScheduleDialog({ departments, defaultDate, trigger = "button"
         disabled={!departments.length}
         aria-label={`${defaultDate}に予定を追加`}
         title="この日に予定を追加"
-        className={trigger === "cell" ? "grid size-6 place-items-center rounded-md border border-amber-300 bg-amber-50 text-amber-800 transition hover:bg-[#f2c94c] hover:text-slate-900 disabled:opacity-40" : trigger === "menu" ? "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-amber-50 disabled:opacity-40" : "flex items-center gap-2 rounded-xl bg-[#f2c94c] px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-[#ddb62f] disabled:cursor-not-allowed disabled:bg-slate-300"}
+        className={trigger === "cell" ? "grid size-6 place-items-center rounded-md border border-amber-300 bg-amber-50 text-amber-800 transition hover:bg-[#f2c94c] hover:text-slate-900 disabled:opacity-40" : trigger === "menu" ? "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-amber-50 disabled:opacity-40" : trigger === "pickup" ? "inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 hover:bg-[#f2c94c]" : "flex items-center gap-2 rounded-xl bg-[#f2c94c] px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-[#ddb62f] disabled:cursor-not-allowed disabled:bg-slate-300"}
       >
-        {trigger === "menu" ? <CalendarPlus size={17} className="text-amber-700" /> : <Plus size={trigger === "cell" ? 14 : 18} />}<span className={trigger === "cell" ? "sr-only" : trigger === "menu" ? "" : "hidden sm:inline"}>{trigger === "menu" ? "スケジュール登録" : "予定を追加"}</span>
+        {trigger === "menu" || trigger === "pickup" ? <CalendarPlus size={trigger === "pickup" ? 15 : 17} className="text-amber-700" /> : <Plus size={trigger === "cell" ? 14 : 18} />}<span className={trigger === "cell" ? "sr-only" : trigger === "menu" ? "" : trigger === "pickup" ? "" : "hidden sm:inline"}>{trigger === "menu" ? "スケジュール登録" : trigger === "pickup" ? "予定登録" : "予定を追加"}</span>
       </button>}
 
       <dialog ref={dialogRef} aria-labelledby="add-schedule-title" className="m-auto w-[min(840px,calc(100%-2rem))] rounded-2xl border border-slate-200 bg-white p-0 text-[#18212f] shadow-2xl backdrop:bg-slate-950/40">
