@@ -51,7 +51,6 @@ export function LoginForm() {
       }
       await signOut(auth);
       router.push("/");
-      router.refresh();
     } catch (error) {
       console.error("[login] firebase authentication failed", error);
       setMessage(error instanceof FirebaseError

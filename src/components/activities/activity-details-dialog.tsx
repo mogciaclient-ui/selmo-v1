@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { CalendarDays, Clock3, FilePenLine, LoaderCircle, MapPin, Pencil, Search, Trash2, X } from "lucide-react";
+import { Bot, BriefcaseBusiness, CalendarDays, Clock3, FilePenLine, LoaderCircle, MapPin, Pencil, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { deleteActivity, type MutateActivityState, updateActivity } from "@/app/activities/actions";
 import type { DashboardActivity } from "@/domain/dashboard/types";
@@ -10,7 +10,7 @@ import { ActivityAnalysisDialog } from "@/components/activities/activity-analysi
 
 const initialState: MutateActivityState = {};
 
-export function ActivityDetailsDialog({ activity, variant = "calendar" }: { activity: DashboardActivity; variant?: "calendar" | "list" | "button" }) {
+export function ActivityDetailsDialog({ activity, variant = "calendar", calendarView = "month", canManage = false }: { activity: DashboardActivity; variant?: "calendar" | "list" | "button"; calendarView?: "month" | "week"; canManage?: boolean }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [editing, setEditing] = useState(false);
   const [updateState, updateAction, updatePending] = useActionState(updateActivity, initialState);
@@ -27,6 +27,7 @@ export function ActivityDetailsDialog({ activity, variant = "calendar" }: { acti
   const startTime = toTokyoTime(activity.startsAt);
   const endTime = toTokyoTime(activity.endsAt);
   const customerKey = activity.customerExternalId ?? activity.customerId;
+  const opportunityHref = opportunityDetailHref(activity);
   function openDialog() {
     setEditing(false);
     dialogRef.current?.showModal();
@@ -35,21 +36,21 @@ export function ActivityDetailsDialog({ activity, variant = "calendar" }: { acti
   return (
     <>
       {variant === "calendar" ? (
-        <div className="event-blue group rounded-lg px-2 py-2 shadow-sm transition hover:-translate-y-px hover:shadow-md">
-          <button type="button" onClick={() => openDialog()} className="block w-full text-left">
-            <span className="inline-flex rounded bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-bold leading-none text-amber-950">{startTime}–{endTime}</span>
+        calendarView === "month" ? (
+          <button type="button" onClick={() => openDialog()} className="flex w-full items-center gap-2 border-b border-slate-200 py-1.5 text-left transition hover:bg-amber-50/50">
+            <span className="w-9 shrink-0 text-[10px] font-bold tabular-nums text-slate-500 md:text-[11px]">{startTime}</span>
+            <span className="min-w-0 flex-1 truncate text-[11px] font-bold leading-tight text-slate-900 md:text-xs">{activity.customerName ?? activity.title}</span>
           </button>
-          {customerKey ? <Link href={`/customers/${customerKey}`} className="mt-1 block truncate text-[11px] font-bold leading-tight text-slate-900 underline decoration-slate-300 underline-offset-2 hover:text-amber-800 md:text-xs">{activity.customerName ?? "顧客未設定"}</Link> : <span className="mt-1 block truncate text-[11px] font-bold leading-tight text-slate-900 md:text-xs">{activity.customerName ?? "顧客未設定"}</span>}
-          <button type="button" onClick={() => openDialog()} className="block w-full text-left">
-            <span className="mt-0.5 block truncate text-[10px] font-medium leading-tight text-slate-600 md:text-[11px]">{activity.title}</span>
-          </button>
-          <div className="mt-1.5 border-t border-amber-200 pt-1.5">
-            <div className="flex flex-nowrap items-center gap-1">
-              {customerKey && <CalendarAction href={`/customers/${customerKey}?section=activities`} icon={CalendarDays} label="活動履歴" tone="sky"/>}
-              <CalendarAction href={`/activities/${activity.id}/report`} icon={FilePenLine} label="活動登録" tone="orange"/>
-              {activity.customerId && <CalendarAction href={`/customers/nearby?customerId=${activity.customerId}`} icon={Search} label="周辺検索" tone="violet"/>}
+        ) : <div className="group flex items-center gap-2 border-b border-slate-200 py-2 transition hover:bg-amber-50/50">
+          <button type="button" onClick={() => openDialog()} className="w-9 shrink-0 text-left text-[10px] font-bold tabular-nums text-slate-500 md:text-[11px]">{startTime}</button>
+          <div className="min-w-0 flex-1">
+            {customerKey ? <Link href={`/customers/${customerKey}`} className="block truncate text-[11px] font-bold leading-tight text-slate-900 hover:text-amber-800 md:text-xs">{activity.customerName ?? "顧客未設定"}</Link> : <span className="block truncate text-[11px] font-bold leading-tight text-slate-900 md:text-xs">{activity.customerName ?? "顧客未設定"}</span>}
+            <button type="button" onClick={() => openDialog()} className="block w-full text-left"><span className="mt-0.5 block truncate text-[10px] font-medium leading-tight text-slate-500 md:text-[11px]">{activity.title}</span></button>
+          </div>
+          <div className="flex max-w-[60px] shrink-0 flex-wrap items-center justify-end gap-1">
+              {opportunityHref && <CalendarAction href={opportunityHref} icon={BriefcaseBusiness} label="過去の活動内容" tone="sky"/>}
+              {canManage && <CalendarAction href={`/activities/${activity.id}/report`} icon={FilePenLine} label="活動登録" tone="orange"/>}
               {activity.commonReport?.aiAnalysisStatus === "completed" && <ActivityAnalysisDialog activityId={activity.id}/>} 
-            </div>
           </div>
         </div>
       ) : variant === "list" ? (
@@ -100,15 +101,19 @@ export function ActivityDetailsDialog({ activity, variant = "calendar" }: { acti
               {activity.commonReport?.salesProcess && <div className="rounded-xl bg-slate-50 px-4 py-3"><p className="text-xs font-semibold text-slate-400">営業プロセス</p><p className="mt-1 text-sm font-semibold">{activity.commonReport.salesProcess}</p></div>}
               {(activity.commonReport?.progressStep ?? activity.scheduleDetails?.progressStep) && <div className="rounded-xl bg-slate-50 px-4 py-3"><p className="text-xs font-semibold text-slate-400">進行工程</p><p className="mt-1 text-sm font-semibold">{activity.commonReport?.progressStep ?? activity.scheduleDetails?.progressStep}</p></div>}
               {activity.commonReport?.activityStatus && <div className="rounded-xl bg-slate-50 px-4 py-3"><p className="text-xs font-semibold text-slate-400">活動ステータス</p><p className="mt-1 text-sm font-semibold">{activity.commonReport.activityStatus}</p></div>}
+              {activity.aiAnalysisSummary && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"><p className="flex items-center gap-2 text-xs font-bold text-amber-800"><Bot size={15} />AI分析の要約</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{activity.aiAnalysisSummary}</p></div>}
               {(updateState.message || deleteState.message) && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{updateState.message ?? deleteState.message}</p>}
             </div>
-            <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              {opportunityHref && <Link href={opportunityHref} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-amber-300 hover:bg-amber-50"><BriefcaseBusiness size={16} />過去の活動内容</Link>}
+            </div>
+            {canManage && <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
               <form action={deleteAction} onSubmit={(event) => { if (!window.confirm("この予定を削除しますか？この操作は取り消せません。")) event.preventDefault(); }}>
                 <input type="hidden" name="id" value={activity.id} />
                 <button type="submit" disabled={busy} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">{deletePending ? <LoaderCircle size={17} className="animate-spin" /> : <Trash2 size={17} />}削除</button>
               </form>
               <button type="button" onClick={() => setEditing(true)} disabled={busy} className="flex items-center gap-2 rounded-xl bg-[#f2c94c] px-5 py-2.5 text-sm font-semibold text-slate-900 disabled:opacity-50"><Pencil size={16} />編集する</button>
-            </div>
+            </div>}
           </div>
         )}
       </dialog>
@@ -123,7 +128,6 @@ function Detail({ icon: Icon, label, value }: { icon: typeof CalendarDays; label
 const actionTone = {
   sky: "bg-sky-50 text-sky-700 ring-sky-200",
   orange: "bg-orange-50 text-orange-700 ring-orange-200",
-  violet: "bg-violet-50 text-violet-700 ring-violet-200",
 } as const;
 
 function CalendarAction({ href, icon: Icon, label, tone }: { href: string; icon: typeof CalendarDays; label: string; tone: keyof typeof actionTone }) {
@@ -144,4 +148,9 @@ function toTokyoTime(value: string) {
 
 function formatTokyoDate(value: string) {
   return new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "long", day: "numeric", weekday: "short" }).format(new Date(value));
+}
+
+function opportunityDetailHref(activity: DashboardActivity) {
+  const opportunityId = activity.scheduleDetails?.opportunityId;
+  return typeof opportunityId === "string" && opportunityId ? `/opportunities/${opportunityId}?activityId=${activity.id}#activity-detail` : null;
 }

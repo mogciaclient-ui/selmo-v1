@@ -11,6 +11,7 @@ export type DashboardActivity = {
   customerId: string | null;
   customerExternalId: string | null;
   customerName: string | null;
+  aiAnalysisSummary?: string | null;
   scheduleDetails?: Record<string, string | boolean>;
   commonReport?: Record<string, string | boolean>;
 };

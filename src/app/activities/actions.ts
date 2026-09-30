@@ -39,6 +39,7 @@ const memoSchema = z.object({
 export async function createActivity(_: CreateActivityState, formData: FormData): Promise<CreateActivityState> {
   const context = await getCurrentUser();
   if (!context) return { message: "ログインし直してください。" };
+  if (context.role !== "sales_rep") return { message: "管理者アカウントは閲覧専用です。" };
 
   const parsed = activitySchema.safeParse({
     departmentId: formData.get("departmentId"),
@@ -102,6 +103,7 @@ export async function createActivity(_: CreateActivityState, formData: FormData)
 export async function createActivityMemo(_: CreateActivityState, formData: FormData): Promise<CreateActivityState> {
   const context = await getCurrentUser();
   if (!context) return { message: "ログインし直してください。" };
+  if (context.role !== "sales_rep") return { message: "管理者アカウントは閲覧専用です。" };
   const parsed = memoSchema.safeParse({
     departmentId: formData.get("departmentId"),
     customerName: formData.get("customerName"),
@@ -111,7 +113,7 @@ export async function createActivityMemo(_: CreateActivityState, formData: FormD
     details: formData.get("details"),
   });
   if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "入力内容を確認してください。" };
-  if (context.role !== "organization_admin" && !context.departmentIds.includes(parsed.data.departmentId)) return { message: "この部門を操作する権限がありません。" };
+  if (!context.departmentIds.includes(parsed.data.departmentId)) return { message: "この部門を操作する権限がありません。" };
 
   const startsAt = new Date(`${parsed.data.date}T${parsed.data.startTime}:00+09:00`);
   const endsAt = new Date(`${parsed.data.date}T${parsed.data.endTime}:00+09:00`);
@@ -154,6 +156,7 @@ const updateActivitySchema = z.object({
 export async function updateActivity(_: MutateActivityState, formData: FormData): Promise<MutateActivityState> {
   const context = await getCurrentUser();
   if (!context) return { message: "ログインし直してください。" };
+  if (context.role !== "sales_rep") return { message: "管理者アカウントは閲覧専用です。" };
 
   const parsed = updateActivitySchema.safeParse({
     id: formData.get("id"),
@@ -186,6 +189,7 @@ const deleteActivitySchema = z.object({ id: z.uuid() });
 export async function deleteActivity(_: MutateActivityState, formData: FormData): Promise<MutateActivityState> {
   const context = await getCurrentUser();
   if (!context) return { message: "ログインし直してください。" };
+  if (context.role !== "sales_rep") return { message: "管理者アカウントは閲覧専用です。" };
 
   const parsed = deleteActivitySchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return { message: "削除対象が正しくありません。" };

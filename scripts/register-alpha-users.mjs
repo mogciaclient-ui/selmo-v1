@@ -18,6 +18,8 @@ const users = [
   { name: "木村", email: "kimura@alpha-communications.co.jp", uid: "EUi0XXO7VvWFXNw49vwL0bmpou42", role: "organization_admin", departments: [salesDepartmentId, axcelDepartmentId] },
   { name: "西村", email: "nishimura@alpha-communications.co.jp", uid: "xubZZDsisaVPLJTdePs2gZrn6Kn2", role: "department_admin", departments: [salesDepartmentId] },
   { name: "松本", email: "matsumoto@alpha-communications.co.jp", uid: "Paah9EFuwGXpREJdHwjKzhDOxzB3", role: "sales_rep", departments: [salesDepartmentId] },
+  { name: "沖中", email: "okinaka@alpha-communications.co.jp", uid: "1IpkIlNd5wN7yq0QgVpl2mebWpO2", role: "sales_rep", departments: [salesDepartmentId] },
+  { name: "三角", email: "misumi@alpha-communications.co.jp", uid: "G954bl3A4BO64vYzsa1ElDZXd8e2", role: "sales_rep", departments: [salesDepartmentId] },
 ];
 
 for (const user of users) {

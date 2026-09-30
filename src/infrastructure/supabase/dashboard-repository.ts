@@ -51,7 +51,27 @@ export function createSupabaseDashboardRepository(client: SupabaseClient, scope:
 
       if (error) throw new Error("営業予定を取得できませんでした。", { cause: error });
 
-      return ((data ?? []) as ActivityRow[]).map((row): DashboardActivity => ({
+      const rows = (data ?? []) as ActivityRow[];
+      const activityIds = rows.map((row) => row.id);
+      const summaries = new Map<string, string>();
+      const opportunityIds = new Map<string, string>();
+      if (activityIds.length) {
+        let opportunityRequest = client.from("opportunities").select("id,source_activity_id").eq("organization_id", scope.organizationId).in("source_activity_id", activityIds);
+        if (scope.role === "sales_rep") opportunityRequest = opportunityRequest.eq("employee_id", scope.employeeId);
+        if (scope.role === "department_admin") opportunityRequest = opportunityRequest.in("department_id", scope.departmentIds);
+        const [{ data: analysisRows }, { data: opportunityRows }] = await Promise.all([
+          client.from("activity_ai_analyses").select("activity_id,analysis").eq("organization_id", scope.organizationId).eq("status", "completed").in("activity_id", activityIds),
+          opportunityRequest,
+        ]);
+        for (const row of (analysisRows ?? []) as { activity_id: string; analysis: { summary?: unknown } | null }[]) {
+          if (typeof row.analysis?.summary === "string" && row.analysis.summary.trim()) summaries.set(row.activity_id, row.analysis.summary);
+        }
+        for (const opportunity of (opportunityRows ?? []) as { id: string; source_activity_id: string | null }[]) {
+          if (opportunity.source_activity_id) opportunityIds.set(opportunity.source_activity_id, opportunity.id);
+        }
+      }
+
+      return rows.map((row): DashboardActivity => ({
         id: row.id,
         title: row.title,
         activityType: row.activity_type,
@@ -64,7 +84,8 @@ export function createSupabaseDashboardRepository(client: SupabaseClient, scope:
         customerId: row.customer_id,
         customerExternalId: Array.isArray(row.customers) ? row.customers[0]?.external_id ?? null : row.customers?.external_id ?? null,
         customerName: Array.isArray(row.customers) ? row.customers[0]?.name ?? null : row.customers?.name ?? null,
-        scheduleDetails: row.schedule_details ?? {},
+        aiAnalysisSummary: summaries.get(row.id) ?? null,
+        scheduleDetails: { ...(row.schedule_details ?? {}), opportunityId: row.schedule_details?.opportunityId ?? opportunityIds.get(row.id) ?? "" },
         commonReport: row.common_report ?? {},
       }));
     },

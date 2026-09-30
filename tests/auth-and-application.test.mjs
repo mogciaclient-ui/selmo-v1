@@ -29,12 +29,12 @@ test("全体管理者は全部門にアクセスできる", () => {
   assert.equal(canAccessDepartment(context({ role: "organization_admin", departmentIds: [] }), "department-b"), true);
 });
 
-test("予定を管理できるのは本人、所属部門管理者、全体管理者", () => {
+test("予定を管理できるのは営業本人だけ", () => {
   assert.equal(canManageActivity(context(), "employee-a", "department-b"), true);
   assert.equal(canManageActivity(context(), "employee-b", "department-a"), false);
-  assert.equal(canManageActivity(context({ role: "department_admin" }), "employee-b", "department-a"), true);
+  assert.equal(canManageActivity(context({ role: "department_admin" }), "employee-b", "department-a"), false);
   assert.equal(canManageActivity(context({ role: "department_admin" }), "employee-b", "department-b"), false);
-  assert.equal(canManageActivity(context({ role: "organization_admin" }), "employee-b", "department-b"), true);
+  assert.equal(canManageActivity(context({ role: "organization_admin" }), "employee-b", "department-b"), false);
 });
 
 test("終了が開始以前の予定はRepositoryへ渡さない", async () => {

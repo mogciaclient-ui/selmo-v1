@@ -4,6 +4,7 @@ export function canAccessDepartment(context: AuthContext, departmentId: string) 
   return context.role === "organization_admin" || context.departmentIds.includes(departmentId);
 }
 
-export function canManageActivity(context: AuthContext, employeeId: string, departmentId: string) {
-  return context.employeeId === employeeId || context.role === "organization_admin" || (context.role === "department_admin" && context.departmentIds.includes(departmentId));
+export function canManageActivity(context: AuthContext, employeeId: string, _departmentId: string) {
+  void _departmentId;
+  return context.role === "sales_rep" && context.employeeId === employeeId;
 }
