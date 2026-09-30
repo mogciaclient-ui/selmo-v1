@@ -107,7 +107,7 @@ export function ActivityDetailsDialog({ activity, variant = "calendar", calendar
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
               {opportunityHref && <Link href={opportunityHref} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-amber-300 hover:bg-amber-50"><BriefcaseBusiness size={16} />過去の活動内容</Link>}
             </div>
-            {canManage && <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
+            {canManage && <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
               <form action={deleteAction} onSubmit={(event) => { if (!window.confirm("この予定を削除しますか？この操作は取り消せません。")) event.preventDefault(); }}>
                 <input type="hidden" name="id" value={activity.id} />
                 <button type="submit" disabled={busy} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">{deletePending ? <LoaderCircle size={17} className="animate-spin" /> : <Trash2 size={17} />}削除</button>

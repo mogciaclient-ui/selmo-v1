@@ -8,6 +8,8 @@
   --font-mono: "SFMono-Regular", Consolas, monospace;
 }
 * { box-sizing: border-box; }
+img, video, canvas, svg { max-width: 100%; }
+input, select, textarea, button { min-width: 0; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; overflow-x: hidden; background: var(--background); color: var(--foreground); font-family: Arial, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; }
 button { cursor: pointer; }
@@ -17,5 +19,6 @@ button { cursor: pointer; }
 
 @media (max-width: 639px) {
   input, select, textarea { font-size: 16px; }
-  dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
+  dialog { width: calc(100vw - 1rem) !important; max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
+  .min-w-64 { min-width: 100%; }
 }

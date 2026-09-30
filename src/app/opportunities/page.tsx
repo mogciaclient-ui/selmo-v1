@@ -90,13 +90,13 @@ export default async function OpportunitiesPage({searchParams}:{searchParams:Pro
   return <AppShell active="/opportunities" displayName={context.displayName} department={context.departmentName}>
     <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-4 px-5 py-6 md:px-8">
       <div><p className="text-xs font-bold tracking-wide text-amber-800">OPPORTUNITIES</p><h1 className="mt-1 text-2xl font-bold">案件リスト</h1><p className="mt-1 text-sm text-slate-400">全案件を一覧表示しています。必要なときだけ条件で絞り込めます。</p></div>
-      <div className="flex gap-2"><OpportunityCsvDialog/><MasterOpportunityDialog customers={(customers??[]) as {id:string;name:string}[]} products={(productRows??[]).map((item)=>item.name)}/></div>
+      <div className="flex w-full flex-wrap gap-2 sm:w-auto"><OpportunityCsvDialog/><MasterOpportunityDialog customers={(customers??[]) as {id:string;name:string}[]} products={(productRows??[]).map((item)=>item.name)}/></div>
     </div></header>
     <main className="mx-auto max-w-[1500px] p-4 pb-24 md:p-8">
       <OpportunitySearchForm values={values} members={members} departments={(departments??[]) as {id:string;name:string}[]}/>
       {error?<div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">案件データを取得できませんでした。検索条件を確認してください。</div>:
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b px-5 py-4"><h2 className="font-bold">{one("searched")==="1" ? "検索結果" : "案件一覧"} <span className="text-amber-700">{rows.length}件</span></h2><a href="/api/opportunities/export" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold text-slate-600"><Download size={15}/>CSVダウンロード</a></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-4 sm:px-5"><h2 className="font-bold">{one("searched")==="1" ? "検索結果" : "案件一覧"} <span className="text-amber-700">{rows.length}件</span></h2><a href="/api/opportunities/export" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold text-slate-600"><Download size={15}/>CSVダウンロード</a></div>
         <div className="overflow-x-auto overscroll-x-contain"><table className="w-full min-w-[1280px] text-left text-sm">
           <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-4 py-3">顧客名</th><th className="px-4 py-3">拠点名</th><th className="px-4 py-3">案件名</th><th className="px-4 py-3">商材名</th><th className="px-4 py-3">営業担当</th><th className="px-4 py-3">最終活動日</th><th className="px-4 py-3">営業プロセス</th><th className="px-4 py-3">ステータス</th><th className="px-4 py-3">確度</th><th className="px-4 py-3">優先順位</th><th className="px-4 py-3 text-right">見込金額</th><th className="px-4 py-3 text-right">操作</th></tr></thead>
           <tbody>{rows.length?rows.map(row=>{const customer=first(row.customers);const employee=first(row.employees);return <tr key={row.id} className="border-t border-slate-100 hover:bg-amber-50/40">

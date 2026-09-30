@@ -19,7 +19,7 @@ export function AppShell({ active, displayName, department, children }: { active
         <div className="ml-auto hidden items-center gap-3 sm:flex"><div className="grid size-9 place-items-center rounded-full bg-[#f2c94c] text-xs font-bold text-slate-900">{displayName.slice(0, 2)}</div><div className="hidden lg:block"><p className="text-xs font-semibold">{displayName}</p><p className="text-[10px] text-slate-400">{department ?? "所属未設定"}</p></div><form action={signOut}><button aria-label="ログアウト" title="ログアウト" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><LogOut size={17} /></button></form></div>
       </div>
     </header>
-    <main>{children}</main>
-    <nav className="fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">{items.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`flex min-h-14 min-w-20 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[9px] font-semibold ${active === href ? "text-amber-800" : "text-slate-400"}`}><Icon size={18} />{label}</Link>)}</nav>
+    <main className="min-w-0">{children}</main>
+    <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">{items.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 px-0.5 py-2 text-[9px] font-semibold ${active === href ? "text-amber-800" : "text-slate-400"}`}><Icon size={18} /><span className="max-w-full truncate">{label}</span></Link>)}</nav>
   </div>;
 }
