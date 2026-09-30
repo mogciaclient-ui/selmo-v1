@@ -42,7 +42,7 @@ export async function syncOpportunityFromActivity(db: SupabaseClient, input: Inp
 
   const { data: linked, error: linkedError } = await db
     .from("opportunities")
-    .select("id,expected_amount,order_amount")
+    .select("id,expected_amount,order_amount,activity_from,activity_to")
     .eq("organization_id", input.organizationId)
     .eq(input.opportunityId ? "id" : "source_activity_id", input.opportunityId || input.activityId)
     .eq("customer_id", input.customerId)
@@ -53,11 +53,10 @@ export async function syncOpportunityFromActivity(db: SupabaseClient, input: Inp
   if (!opportunity) {
     const { data: existing, error: existingError } = await db
       .from("opportunities")
-      .select("id,expected_amount,order_amount")
+      .select("id,expected_amount,order_amount,activity_from,activity_to")
       .eq("organization_id", input.organizationId)
       .eq("customer_id", input.customerId)
       .eq("name", name)
-      .is("source_activity_id", null)
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -65,8 +64,9 @@ export async function syncOpportunityFromActivity(db: SupabaseClient, input: Inp
     opportunity = existing;
   }
 
+  const activityFrom = opportunity?.activity_from && opportunity.activity_from < input.activityDate ? opportunity.activity_from : input.activityDate;
+  const activityTo = opportunity?.activity_to && opportunity.activity_to > input.activityDate ? opportunity.activity_to : input.activityDate;
   const shared = {
-    source_activity_id: input.activityId,
     department_id: input.departmentId,
     customer_id: input.customerId,
     employee_id: input.employeeId,
@@ -78,6 +78,8 @@ export async function syncOpportunityFromActivity(db: SupabaseClient, input: Inp
     sales_type: input.salesType?.trim() || null,
     sales_process: input.salesProcess?.trim() || null,
     progress_step: input.progressStep?.trim() || null,
+    activity_from: activityFrom || null,
+    activity_to: activityTo || null,
     updated_at: now,
   };
 
@@ -93,6 +95,7 @@ export async function syncOpportunityFromActivity(db: SupabaseClient, input: Inp
   const { error } = await db.from("opportunities").insert({
     ...shared,
     organization_id: input.organizationId,
+    source_activity_id: input.activityId,
     stage: status === "won" ? "closing" : "proposal",
     priority: "medium",
     expected_amount: 0,

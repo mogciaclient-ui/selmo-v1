@@ -2,6 +2,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { RoleplayWorkspace } from "@/components/roleplay/roleplay-workspace";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { verifyRoleplayAnalysis, type RoleplayAnalysis } from "@/lib/openai/analyze-roleplay-session";
+import { productOptions } from "@/domain/products/defaults";
 
 type MemberRow = { employee_id: string; employees: { name: string } | { name: string }[] | null; app_user_departments: { department_id: string }[] };
 
@@ -28,7 +29,7 @@ export default async function RoleplayPage({ searchParams }: { searchParams: Pro
   ]);
   const scenarios = (scenarioRows ?? []).map((item) => ({ id: item.id, title: item.title, category: item.category, difficulty: item.difficulty, customer: [item.customer_role, item.customer_profile].filter(Boolean).join("｜"), objective: item.practice_goal, minutes: 10, product: item.product_name, expectedObjections: item.expected_objections ?? "", scoringCriteria: item.scoring_criteria ?? "", customFields: Array.isArray(item.custom_fields) ? item.custom_fields as { label: string; value: string }[] : [] }));
   const histories = (historyRows ?? []).map((item) => { const analysis = item.analysis as RoleplayAnalysis | null; const messages = Array.isArray(item.messages) ? item.messages as { role: "customer" | "sales"; text: string }[] : []; return { id: item.id, title: item.title, product: item.product_name ?? "—", category: item.category ?? "—", score: item.score, completedAt: item.completed_at, employeeName: relation(item.employees)?.name ?? "担当者不明", analysis: analysis ? verifyRoleplayAnalysis(analysis, messages) : undefined }; });
-  return <AppShell active="/roleplay" displayName={context.displayName} department={context.departmentName}><RoleplayWorkspace products={(productRows ?? []).map((item) => item.name)} savedScenarios={scenarios} initialHistories={histories} canViewTeam={context.role !== "sales_rep"} historyOnly={context.role !== "sales_rep"} departments={context.role === "organization_admin" ? departments : []} selectedDepartmentId={selectedDepartmentId} members={members} selectedEmployeeId={selectedEmployeeId} /></AppShell>;
+  return <AppShell active="/roleplay" displayName={context.displayName} department={context.departmentName}><RoleplayWorkspace products={productOptions((productRows ?? []).map((item) => item.name))} savedScenarios={scenarios} initialHistories={histories} canViewTeam={context.role !== "sales_rep"} historyOnly={context.role !== "sales_rep"} departments={context.role === "organization_admin" ? departments : []} selectedDepartmentId={selectedDepartmentId} members={members} selectedEmployeeId={selectedEmployeeId} /></AppShell>;
 }
 
 function relation<T>(value: T | T[] | null) { return Array.isArray(value) ? value[0] : value; }

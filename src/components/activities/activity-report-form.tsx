@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { CheckCircle2, FileAudio, LoaderCircle } from "lucide-react";
 import { saveDetailedActivityReport, type DetailedReportState } from "@/app/activities/[id]/report/actions";
+import { defaultProductNames } from "@/domain/products/defaults";
 
 type Member = { id: string; name: string };
 type Defaults = { date: string; startTime: string; endTime: string; product: string; ownerId: string; progressStep: string; salesType: string; activityStatus: string; aiSummary: string };
@@ -68,7 +69,7 @@ export function ActivityReportForm({ activityId, defaults, members, activityOwne
 
 const axcelLossOptions = ["受注有 理由不要", "商談相手が決裁者でない", "意識的に話さなかった", "話せなかった", "移転予定", "業者指定", "経営状態", "コストアップ", "時期NG", "廃業予定", "その他"];
 const vehicles = ["カムリ", "IQ", "アクアみ532", "アクアに532", "アクアな532", "プリウスせ334", "プリウスに333", "スイフト", "プリウスら333", "プリウスも333", "イグニスな533", "イグニスと533", "ミライース", "フィットろ532", "イグニスぬ533", "モコ", "プリウスα", "代車"];
-const productOptions = ["AXCEL", "ビジネスフォン", "FAX", "複合機", "UTM", "サーバー", "ネットワーク商材", "防犯カメラ", "ＡＸＣＥＬ", "アルファ電気", "コラボ", "LED", "UPS・SSW・ルーター", "その他", "アルファサポート", "CS事業部", "商材未定"];
+const productOptions = [...defaultProductNames];
 const staffExtras = [{ id: "external", name: "外部" }, { id: "ntt", name: "NTT" }, { id: "manufacturer", name: "メーカー" }];
 const input = "mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-amber-500";
 function Required() { return <span className="ml-1 text-red-500">★</span>; }
@@ -87,7 +88,7 @@ function MonthFields() { return <div><span className="text-xs font-bold text-sla
 
 type ProductRow = { id: number; name: string; amount: string; quantity: string };
 function ProductEditor({ initialProduct, status, showQuantity }: { initialProduct: string; status: string; showQuantity: boolean }) {
-  const [rows, setRows] = useState<ProductRow[]>([{ id: 1, name: productOptions.includes(initialProduct) ? initialProduct : "その他", amount: "", quantity: "" }]);
+  const [rows, setRows] = useState<ProductRow[]>([{ id: 1, name: productOptions.includes(initialProduct as typeof productOptions[number]) ? initialProduct : "商材未定", amount: "", quantity: "" }]);
   const [mainId, setMainId] = useState(1);
   const [perProduct, setPerProduct] = useState(false);
   const update = (id: number, values: Partial<ProductRow>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...values } : row));

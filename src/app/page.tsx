@@ -11,6 +11,7 @@ import { DayActivityList } from "@/components/activities/day-activity-list";
 import { AppShell } from "@/components/layout/app-shell";
 import { CellCreateMenu } from "@/components/activities/cell-create-menu";
 import { CalendarCsvExport } from "@/components/activities/calendar-csv-export";
+import { AdminCalendarScope } from "@/components/activities/admin-calendar-filters";
 import { MonthlyPickupPanel, type MonthlyPickupItem } from "@/components/dashboard/monthly-pickup-panel";
 import { InformationTabs } from "@/components/dashboard/information-tabs";
 import { activityStatusLabel } from "@/domain/activities/labels";
@@ -24,7 +25,7 @@ type RecentActivityRow = { id: string; customer_id: string | null; title: string
 type OrderActivityRow = { id: string; customer_id: string | null; employee_id: string; common_report: { activityStatus?: string; confidence?: string; salesProcess?: string; orderDate?: string; orderAmount?: string | number; products?: Array<{ name?: string; amount?: string | number; quantity?: string | number; main?: boolean }> } | null; schedule_details: { opportunityId?: string; opportunityName?: string } | null; customers: { name: string } | { name: string }[] | null; employees: { name: string } | { name: string }[] | null };
 type PickupRow = { id: string; department_id: string; employee_id: string; customer_id: string; reason: string | null; departments: { name: string } | { name: string }[] | null; employees: { name: string } | { name: string }[] | null; customers: { name: string; external_id: string | null; phone: string | null; address: string | null; department_id: string } | { name: string; external_id: string | null; phone: string | null; address: string | null; department_id: string }[] | null };
 type PickupActivityRow = { customer_id: string | null; employee_id: string; starts_at: string; status: string; common_report: Record<string, unknown> | null };
-export default async function HomePage({ searchParams }: { searchParams: Promise<{ month?: string; week?: string; view?: string; scope?: string; departmentId?: string; employeeId?: string; infoTab?: string; infoView?: string; infoType?: string; pickupYear?: string; pickupMonth?: string; pickupDepartmentId?: string; pickupEmployeeId?: string; orderType?: string; confidence?: string; orderYear?: string; orderMonth?: string; orderDepartmentId?: string; orderEmployeeId?: string; customerId?: string; opportunityId?: string }> }) {
+export default async function HomePage({ searchParams }: { searchParams: Promise<{ month?: string; week?: string; view?: string; scope?: string; departmentId?: string; employeeId?: string; employeeIds?: string | string[]; infoTab?: string; infoView?: string; infoType?: string; pickupYear?: string; pickupMonth?: string; pickupDepartmentId?: string; pickupEmployeeId?: string; orderType?: string; confidence?: string; orderYear?: string; orderMonth?: string; orderDepartmentId?: string; orderEmployeeId?: string; customerId?: string; opportunityId?: string }> }) {
   const query = await searchParams;
   const requestedMonth = query.month;
   const context = await requireAuth();
@@ -53,9 +54,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const department = context.departmentName;
   const members = ((memberRows ?? []) as unknown as MemberRow[]).filter((member) => context.role === "organization_admin" || (context.role === "sales_rep" ? member.employee_id === context.employeeId : member.app_user_departments.some((item) => context.departmentIds.includes(item.department_id)))).map((member) => ({ id: member.employee_id, name: Array.isArray(member.employees) ? member.employees[0]?.name ?? "名称未設定" : member.employees?.name ?? "名称未設定", departmentIds: member.app_user_departments.map((item) => item.department_id) }));
   const selectedDepartmentId = query.departmentId && departments.some((item) => item.id === query.departmentId) ? query.departmentId : "";
-  const selectedEmployeeId = query.employeeId && members.some((item) => item.id === query.employeeId)
+  const selectedEmployeeId = query.scope !== "custom" && query.employeeId && members.some((item) => item.id === query.employeeId)
     ? query.employeeId
     : context.role === "sales_rep" ? context.employeeId : "";
+  const requestedEmployeeIds = Array.isArray(query.employeeIds) ? query.employeeIds : query.employeeIds ? [query.employeeIds] : [];
+  const selectedEmployeeIds = query.scope === "custom"
+    ? [...new Set(requestedEmployeeIds)].filter((id) => members.some((member) => member.id === id))
+    : [];
   const todayKey = toTokyoDateKey(new Date());
   const [todayYear, todayMonth] = todayKey.split("-").map(Number);
   const match = requestedMonth?.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
@@ -121,7 +126,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     pickupQuery,
     pickupCustomersPromise,
   ]);
-  const filteredActivities = snapshot.activities.filter((activity) => (!selectedDepartmentId || activity.departmentId === selectedDepartmentId) && (!selectedEmployeeId || activity.employeeId === selectedEmployeeId));
+  const filteredActivities = snapshot.activities.filter((activity) => (!selectedDepartmentId || activity.departmentId === selectedDepartmentId) && (!selectedEmployeeId || activity.employeeId === selectedEmployeeId) && (!selectedEmployeeIds.length || selectedEmployeeIds.includes(activity.employeeId)));
   const activitiesByDay = Object.groupBy(filteredActivities, (activity) => toTokyoDateKey(activity.startsAt));
   let { data: recentRows, error: recentError } = recentResult;
   if (recentError?.code === "42703") {
@@ -187,7 +192,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               {context.role !== "sales_rep" && <form className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-slate-200 bg-amber-50/50 px-5 py-3 md:px-6">
                 <input type="hidden" name="month" value={`${year}-${String(month).padStart(2, "0")}`} />
                 {isWeekView && <><input type="hidden" name="view" value="week"/><input type="hidden" name="week" value={weekAnchor}/></>}
-                <fieldset className="flex items-center gap-3 text-sm font-semibold"><legend className="sr-only">表示対象</legend><label className="flex items-center gap-1.5"><input type="radio" name="scope" value="department" defaultChecked={!query.scope || query.scope === "department"} className="accent-[#e5ad00]" />部署</label><label className="flex items-center gap-1.5"><input type="radio" name="scope" value="team" defaultChecked={query.scope === "team"} className="accent-[#e5ad00]" />チーム</label><label className="flex items-center gap-1.5"><input type="radio" name="scope" value="custom" defaultChecked={query.scope === "custom"} className="accent-[#e5ad00]" />任意選択</label></fieldset>
+                <AdminCalendarScope initialScope={query.scope === "team" || query.scope === "custom" ? query.scope : "department"} members={members} selectedEmployeeId={selectedEmployeeId} selectedEmployeeIds={selectedEmployeeIds}/>
                 <label className="flex items-center gap-1.5 text-sm font-semibold"><input type="checkbox" defaultChecked className="accent-[#e5ad00]" />部署名前方一致</label>
                 {context.role === "organization_admin" ? <>
                   <nav aria-label="表示する部署" className="flex max-w-full overflow-x-auto rounded-lg bg-slate-100 p-1 text-sm font-semibold">
@@ -196,7 +201,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                   </nav>
                   <input type="hidden" name="departmentId" value={selectedDepartmentId} />
                 </> : <select name="departmentId" defaultValue={selectedDepartmentId} aria-label="部署" className="h-10 min-w-40 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold"><option value="">全部署</option>{departments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
-                <select name="employeeId" defaultValue={selectedEmployeeId} aria-label="担当者" className="h-10 min-w-40 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold"><option value="">全メンバー</option>{members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
                 <button className="rounded-lg bg-[#f2c94c] px-4 py-2.5 text-sm font-bold text-slate-900">表示</button>
               </form>}
               {isWeekView ? <div className="divide-y divide-slate-200">
@@ -263,9 +267,11 @@ function shiftMonth(year: number, month: number, amount: number) {
   return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function calendarHref(month: string, query: { scope?: string; departmentId?: string; employeeId?: string }) { const params = new URLSearchParams({ view: "month", month }); if (query.scope) params.set("scope", query.scope); if (query.departmentId) params.set("departmentId", query.departmentId); if (query.employeeId) params.set("employeeId", query.employeeId); return `/?${params}`; }
-function weekHref(week: string, query: { scope?: string; departmentId?: string; employeeId?: string }) { const params = new URLSearchParams({ view: "week", week, month: week.slice(0, 7) }); if (query.scope) params.set("scope", query.scope); if (query.departmentId) params.set("departmentId", query.departmentId); if (query.employeeId) params.set("employeeId", query.employeeId); return `/?${params}`; }
-function departmentHref(query: Record<string, string | undefined>, departmentId: string) { const params = new URLSearchParams(); for (const [key, value] of Object.entries(query)) { if (value && key !== "departmentId" && key !== "employeeId") params.set(key, value); } if (departmentId) params.set("departmentId", departmentId); const search = params.toString(); return search ? `/?${search}` : "/"; }
+type CalendarFilterQuery = { scope?: string; departmentId?: string; employeeId?: string; employeeIds?: string | string[] };
+function calendarHref(month: string, query: CalendarFilterQuery) { const params = new URLSearchParams({ view: "month", month }); appendCalendarFilters(params, query); return `/?${params}`; }
+function weekHref(week: string, query: CalendarFilterQuery) { const params = new URLSearchParams({ view: "week", week, month: week.slice(0, 7) }); appendCalendarFilters(params, query); return `/?${params}`; }
+function appendCalendarFilters(params: URLSearchParams, query: CalendarFilterQuery) { if (query.scope) params.set("scope", query.scope); if (query.departmentId) params.set("departmentId", query.departmentId); if (query.employeeId) params.set("employeeId", query.employeeId); for (const id of Array.isArray(query.employeeIds) ? query.employeeIds : query.employeeIds ? [query.employeeIds] : []) params.append("employeeIds", id); }
+function departmentHref(query: Record<string, string | string[] | undefined>, departmentId: string) { const params = new URLSearchParams(); for (const [key, value] of Object.entries(query)) { if (!value || key === "departmentId" || key === "employeeId" || key === "employeeIds") continue; for (const item of Array.isArray(value) ? value : [value]) params.append(key, item); } if (departmentId) params.set("departmentId", departmentId); const search = params.toString(); return search ? `/?${search}` : "/"; }
 function weekdayTone(index: number, weekView: boolean) { const sunday = weekView ? index === 0 : index === 6; const saturday = weekView ? index === 6 : index === 5; return sunday ? "bg-red-50/70 text-red-600" : saturday ? "bg-blue-50/70 text-blue-600" : "text-slate-500"; }
 function calendarDayKind(dateKey: string) { const day = new Date(`${dateKey}T12:00:00+09:00`).getUTCDay(); if (day === 0 || holidayJp.isHoliday(dateKey)) return "holiday"; if (day === 6) return "saturday"; return "weekday"; }
 function calendarCellTone(dateKey: string, today: boolean, currentMonth: boolean) { if (today) return "bg-amber-50/60"; if (!currentMonth) return "bg-slate-50/60"; const kind = calendarDayKind(dateKey); return kind === "holiday" ? "bg-red-50/45" : kind === "saturday" ? "bg-blue-50/45" : "bg-white"; }

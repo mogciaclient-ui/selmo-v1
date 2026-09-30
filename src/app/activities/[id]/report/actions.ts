@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/auth/get-current-user";
 import { analyzeSalesTranscript } from "@/lib/openai/analyze-sales-transcript";
 import { syncOpportunityFromActivity } from "@/lib/activities/sync-opportunity-from-activity";
 import { processActivityAudio } from "@/lib/activities/process-activity-audio";
+import { syncNextVisitFromReport } from "@/lib/activities/sync-next-visit-from-report";
 
 export type DetailedReportState = { success?: boolean; message?: string };
 const text = (max = 500) => z.string().trim().max(max);
@@ -151,9 +152,25 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
       activityStatus: input.activityStatus,
       confidence: input.confidence,
     });
+    const nextVisitDate = value("nextVisitDate") || value("followUpVisitDate");
+    await syncNextVisitFromReport(context.db, {
+      organizationId: context.organizationId,
+      sourceActivityId: input.id,
+      departmentId: activity.department_id,
+      customerId: activity.customer_id,
+      employeeId: input.activityOwnerId,
+      nextVisitDate,
+      title: value("nextActionDetails") || `${String(scheduleDetails.opportunityName ?? activity.title)} 次回訪問`,
+      opportunityId: String(scheduleDetails.opportunityId ?? ""),
+      opportunityName: String(scheduleDetails.opportunityName ?? ""),
+      salesType: input.salesType || String(scheduleDetails.salesType ?? ""),
+      salesProcess: input.salesProcess || String(scheduleDetails.salesProcess ?? ""),
+      progressStep: input.progressStep || String(scheduleDetails.progressStep ?? ""),
+      notes: value("nextActionDetails"),
+    });
   } catch (syncError) {
     console.error("[activity-report] opportunity sync failed", { activityId: input.id, error: syncError });
-    return { success: true, message: "活動は保存しましたが、案件・受注情報へ反映できませんでした。" };
+    return { success: true, message: "活動は保存しましたが、案件または次回訪問予定へ反映できませんでした。" };
   }
 
   let message = "活動内容を保存しました。";

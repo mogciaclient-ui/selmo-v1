@@ -1,16 +1,16 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { ProductDialog, type Product } from "@/components/products/product-dialog";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { defaultProductNames } from "@/domain/products/defaults";
 
 type ProductRow = { id: string; name: string; name_kana: string | null; model_number: string | null; price: number | null; size: string | null; weight: string | null; capacity: string | null; color: string | null; manufacturer_name: string | null; manufacturer_url: string | null; description: string | null; notes: string | null; action_process: string | null; status: "active" | "inactive" };
-const initialNames = ["AXCEL", "ビジネスフォン", "ＦＡＸ", "複合機", "UTM", "サーバー", "ネットワーク商材", "防犯カメラ", "ＡＸＣＥＬ", "アルファ電気", "コラボ", "ＬＥＤ", "ＵＰＳ・ＳＳＷ・ルーター", "その他", "アルファサポート", "CS事業部", "商材未定", "IT事業部"];
 
 export default async function ProductsPage() {
   const context = await requireAuth();
   const { data, error } = await context.db.from("products").select("id,name,name_kana,model_number,price,size,weight,capacity,color,manufacturer_name,manufacturer_url,description,notes,action_process,status").eq("organization_id", context.organizationId).order("created_at").limit(1000);
   const databaseRows = (data ?? []) as ProductRow[];
   const rows: Product[] = error?.code === "42P01" || databaseRows.length === 0
-    ? initialNames.map((name, index) => ({ name, status: index === 17 ? "inactive" : "active" }))
+    ? defaultProductNames.map((name) => ({ name, status: "active" as const }))
     : databaseRows.map(toProduct);
   const canEdit = context.role === "organization_admin";
 
