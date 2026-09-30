@@ -25,19 +25,13 @@ const statuses: Record<string, "open" | "won" | "lost" | "on_hold"> = {
   保留中: "on_hold",
 };
 
-const confidences: Record<string, "A" | "B" | "C" | "D"> = {
-  "A：高": "A",
-  "B：普通": "B",
-  "C：低": "C",
-  "D：未確定": "D",
-};
-
 export async function syncOpportunityFromActivity(db: SupabaseClient, input: Input) {
   if (!input.customerId) return;
 
   const name = input.opportunityName?.trim() || input.product?.trim() || input.title.trim() || "営業案件";
-  const status = statuses[input.activityStatus ?? ""] ?? "open";
-  const confidence = confidences[input.confidence ?? ""] ?? "B";
+  const status = statuses[input.activityStatus ?? ""];
+  const confidenceKey = input.confidence?.match(/[A-DＡ-Ｄ]/)?.[0] ?? "";
+  const confidence = ({ A: "A", B: "B", C: "C", D: "D", "Ａ": "A", "Ｂ": "B", "Ｃ": "C", "Ｄ": "D" } as const)[confidenceKey as "A"];
   const now = new Date().toISOString();
 
   const { data: linked, error: linkedError } = await db
@@ -72,8 +66,8 @@ export async function syncOpportunityFromActivity(db: SupabaseClient, input: Inp
     employee_id: input.employeeId,
     name,
     product_name: input.product?.trim() || null,
-    status,
-    confidence,
+    status: status ?? "open",
+    confidence: confidence ?? "B",
     expected_close_date: input.activityDate || null,
     sales_type: input.salesType?.trim() || null,
     sales_process: input.salesProcess?.trim() || null,
@@ -87,7 +81,23 @@ export async function syncOpportunityFromActivity(db: SupabaseClient, input: Inp
     const orderAmount = status === "won" && Number(opportunity.order_amount) === 0
       ? Number(opportunity.expected_amount)
       : Number(opportunity.order_amount);
-    const { error } = await db.from("opportunities").update({ ...shared, order_amount: orderAmount }).eq("id", opportunity.id).eq("organization_id", input.organizationId);
+    const update = {
+      department_id: input.departmentId,
+      customer_id: input.customerId,
+      employee_id: input.employeeId,
+      name,
+      activity_from: activityFrom || null,
+      activity_to: activityTo || null,
+      updated_at: now,
+      ...(input.product?.trim() ? { product_name: input.product.trim() } : {}),
+      ...(status ? { status } : {}),
+      ...(confidence ? { confidence } : {}),
+      ...(input.salesType?.trim() ? { sales_type: input.salesType.trim() } : {}),
+      ...(input.salesProcess?.trim() ? { sales_process: input.salesProcess.trim() } : {}),
+      ...(input.progressStep?.trim() ? { progress_step: input.progressStep.trim() } : {}),
+      ...(status === "won" ? { order_amount: orderAmount } : {}),
+    };
+    const { error } = await db.from("opportunities").update(update).eq("id", opportunity.id).eq("organization_id", input.organizationId);
     if (error) throw error;
     return;
   }

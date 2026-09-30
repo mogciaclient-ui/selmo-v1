@@ -8,7 +8,7 @@ import type { CustomerSearchResult } from "@/domain/customers/types";
 type DepartmentOption = { id: string; name: string };
 const initialState: CreateActivityState = {};
 
-export function AddScheduleDialog({ departments, defaultDate, trigger = "button", defaultCustomer, defaultOpportunity, openOnMount = false }: { departments: DepartmentOption[]; defaultDate: string; trigger?: "button" | "cell" | "menu" | "pickup" | "hidden"; defaultCustomer?: CustomerSearchResult; defaultOpportunity?: { id: string; name: string; salesType?: string | null; salesProcess?: string | null; progressStep?: string | null }; openOnMount?: boolean }) {
+export function AddScheduleDialog({ departments, defaultDate, trigger = "button", defaultCustomer, defaultOpportunity, openOnMount = false, onClose }: { departments: DepartmentOption[]; defaultDate: string; trigger?: "button" | "cell" | "menu" | "pickup" | "hidden"; defaultCustomer?: CustomerSearchResult; defaultOpportunity?: { id: string; name: string; salesType?: string | null; salesProcess?: string | null; progressStep?: string | null }; openOnMount?: boolean; onClose?: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [state, action, pending] = useActionState(createActivity, initialState);
   const [query, setQuery] = useState(defaultCustomer?.name ?? "");
@@ -70,7 +70,7 @@ export function AddScheduleDialog({ departments, defaultDate, trigger = "button"
         {trigger === "menu" || trigger === "pickup" ? <CalendarPlus size={trigger === "pickup" ? 15 : 17} className="text-amber-700" /> : <Plus size={trigger === "cell" ? 14 : 18} />}<span className={trigger === "cell" ? "sr-only" : trigger === "menu" ? "" : trigger === "pickup" ? "" : "hidden sm:inline"}>{trigger === "menu" ? "スケジュール登録" : trigger === "pickup" ? "予定登録" : "予定を追加"}</span>
       </button>}
 
-      <dialog ref={dialogRef} aria-labelledby="add-schedule-title" className="m-auto w-[min(840px,calc(100%-2rem))] rounded-2xl border border-slate-200 bg-white p-0 text-[#18212f] shadow-2xl backdrop:bg-slate-950/40">
+      <dialog ref={dialogRef} onClose={onClose} aria-labelledby="add-schedule-title" className="m-auto w-[min(840px,calc(100%-2rem))] rounded-2xl border border-slate-200 bg-white p-0 text-[#18212f] shadow-2xl backdrop:bg-slate-950/40">
         <form action={action} className="max-h-[90vh] overflow-y-auto">
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-6 py-5">
             <h2 id="add-schedule-title" className="text-lg font-bold">スケジュール登録</h2>

@@ -6,14 +6,14 @@ import { createActivityMemo, type CreateActivityState } from "@/app/activities/a
 
 type DepartmentOption = { id: string; name: string };
 
-export function ActivityMemoDialog({ departments, defaultDate }: { departments: DepartmentOption[]; defaultDate: string }) {
+export function ActivityMemoDialog({ departments, defaultDate, onClose }: { departments: DepartmentOption[]; defaultDate: string; onClose?: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [state, action, pending] = useActionState(createActivityMemo, {} as CreateActivityState);
   const [departmentId, setDepartmentId] = useState(departments[0]?.id ?? "");
 
   return <>
     <button type="button" onClick={() => dialogRef.current?.showModal()} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-amber-50"><FilePenLine size={17} className="text-amber-700" />活動メモ登録</button>
-    <dialog ref={dialogRef} aria-labelledby="activity-memo-title" className="m-auto w-[min(680px,calc(100%-2rem))] rounded-2xl border border-slate-200 bg-white p-0 text-[#18212f] shadow-2xl backdrop:bg-slate-950/40">
+    <dialog ref={dialogRef} onClose={onClose} aria-labelledby="activity-memo-title" className="m-auto w-[min(680px,calc(100%-2rem))] rounded-2xl border border-slate-200 bg-white p-0 text-[#18212f] shadow-2xl backdrop:bg-slate-950/40">
       <form action={action} className="max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-6 py-5"><div><p className="text-xs font-semibold text-amber-800">活動メモ</p><h2 id="activity-memo-title" className="mt-1 text-lg font-bold">活動メモを登録</h2></div><button type="button" onClick={() => dialogRef.current?.close()} aria-label="閉じる" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={20} /></button></div>
         <div className="space-y-5 p-6">

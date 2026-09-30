@@ -48,7 +48,7 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
   if (missingField) return { message: `${missingField[1]}を入力してください。` };
   if (input.salesType === "IT営業活動" && !list("proposedProducts").length) return { message: "提案商材を1つ以上選択してください。" };
   if (input.salesType === "AXCEL定期訪問" && !list("effectMeasurementItems").length) return { message: "効果測定項目を1つ以上選択してください。" };
-  let activityQuery = context.db.from("activities").select("id,department_id,employee_id,customer_id,title,schedule_details").eq("id", input.id).eq("organization_id", context.organizationId);
+  let activityQuery = context.db.from("activities").select("id,department_id,employee_id,customer_id,title,schedule_details,common_report").eq("id", input.id).eq("organization_id", context.organizationId);
   activityQuery = activityQuery.eq("employee_id", context.employeeId);
   const { data: activity, error: lookupError } = await activityQuery.maybeSingle();
   if (lookupError || !activity) return { message: "この活動を登録する権限がありません。" };
@@ -77,10 +77,12 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
   }
 
   const analysisRequested = Boolean(input.aiTranscript || input.audioPath);
+  const previousCommon = (activity.common_report ?? {}) as Record<string, unknown>;
   let products: Array<{ name: string; amount: string; quantity: string; main: boolean }> = [];
   try { products = z.array(z.object({ name: z.string().min(1).max(200), amount: z.string().max(20), quantity: z.string().max(20), main: z.boolean() })).max(20).parse(JSON.parse(value("productsJson") || "[]")); } catch { return { message: "商材の入力内容を確認してください。" }; }
   if (!products.length || !products.some((product) => product.main)) return { message: "メイン商材を選択してください。" };
   const common = {
+    ...previousCommon,
     registrationType: input.registrationType, salesType: input.salesType, salesProcess: input.salesProcess, activityStatus: input.activityStatus,
     activityDate: input.activityDate, product: input.product, products, customerContact: input.customerContact, progressStep: input.progressStep,
     attendeeEmployeeIds, attendees: attendeeEmployeeIds.map((id) => employeeNames.get(id)).filter(Boolean),
@@ -92,8 +94,8 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
     expectedOrderYear: value("expectedOrderYear"), expectedOrderMonth: value("expectedOrderMonth"), orderAmount: value("orderAmount"), orderQuantity: value("orderQuantity"), orderDate: value("orderDate"),
     lossReason: value("lossReason"), holdReason: value("holdReason"), commonNotes: value("commonNotes"), nextActionDetails: value("nextActionDetails"), followUpVisitDate: value("followUpVisitDate"),
     oaOrderReason: value("oaOrderReason"), axcelOrderReason: value("axcelOrderReason"), oaLossDetail: value("oaLossDetail"), axcelLossDetail: value("axcelLossDetail"),
-    speakerSeparationStatus: analysisRequested ? "pending" : "",
-    aiAnalysisStatus: analysisRequested ? "waiting_for_speaker_separation" : "",
+    speakerSeparationStatus: analysisRequested ? "pending" : String(previousCommon.speakerSeparationStatus ?? ""),
+    aiAnalysisStatus: analysisRequested ? "waiting_for_speaker_separation" : String(previousCommon.aiAnalysisStatus ?? ""),
   };
   const individual = {
     startTime: input.startTime, endTime: input.endTime, details: input.details, visitCount: input.visitCount,
@@ -110,9 +112,7 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
     csCustomerRank: value("csCustomerRank"), itCustomerRank: value("itCustomerRank"), respondent: value("respondent"), vehicle: value("vehicle"), csActivityContent: value("csActivityContent"), episode: value("episode"),
     csNonSalesActivity: value("csNonSalesActivity"), constructionContent: value("constructionContent"), constructionProgress: value("constructionProgress"),
     homeworkAcquired: value("homeworkAcquired"), homeworkDetails: value("homeworkDetails"), nextAppointment: value("nextAppointment"), effectMeasurementItems: list("effectMeasurementItems"), referral: value("referral"), remote: value("remote"), axcelIrregularActivity: value("axcelIrregularActivity"),
-    aiTranscript: input.aiTranscript, audioPath: input.audioPath, aiAnalysisRequested: analysisRequested,
-    speakerSeparationStatus: analysisRequested ? "pending" : null,
-    aiAnalysisStatus: analysisRequested ? "waiting_for_speaker_separation" : null,
+    ...(analysisRequested ? { aiTranscript: input.aiTranscript, audioPath: input.audioPath, aiAnalysisRequested: true, speakerSeparationStatus: "pending", aiAnalysisStatus: "waiting_for_speaker_separation" } : {}),
   };
   const now = new Date().toISOString();
   if (input.registrationType === "actual") {

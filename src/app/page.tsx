@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import holidayJp from "@holiday-jp/holiday_jp";
 import Link from "next/link";
 import { getDashboardSnapshot } from "@/application/dashboard/get-dashboard-snapshot";
@@ -116,7 +117,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   if (selectedPickupDepartmentId) pickupQuery = pickupQuery.eq("department_id", selectedPickupDepartmentId);
   if (selectedPickupEmployeeId) pickupQuery = pickupQuery.eq("employee_id", selectedPickupEmployeeId);
   const pickupCustomersPromise = context.role === "sales_rep"
-    ? context.db.from("customers").select("id,name").eq("organization_id", context.organizationId).in("department_id", context.departmentIds).order("name").limit(5000)
+    ? fetchAllPickupCustomers(context.db, context.organizationId, context.departmentIds)
     : Promise.resolve({ data: [] as { id: string; name: string }[] });
   const [snapshot, recentResult, { data: opportunityRows }, { data: orderActivityRows }, { data: pickupRows }, { data: pickupCustomerRows }] = await Promise.all([
     snapshotPromise,
@@ -205,7 +206,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               </form>}
               {isWeekView ? <div className="divide-y divide-slate-200">
                 {calendarDays.map((cell, index) => { const dayActivities = activitiesByDay[cell.dateKey] ?? []; return <section key={cell.key} className={`grid md:grid-cols-[170px_minmax(0,1fr)] ${calendarCellTone(cell.dateKey, cell.isToday, true)}`}>
-                  <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 md:block md:border-b-0 md:border-r md:px-5 md:py-5"><div><p className={`text-sm font-bold ${weekdayTone(index, true)}`}>{formatWeekDate(cell.dateKey)}（{weekWeekdays[index]}）</p>{holidayName(cell.dateKey) && <p className="mt-1 text-xs font-bold text-red-600">{holidayName(cell.dateKey)}</p>}</div>{context.role === "sales_rep" && <div className="flex items-center gap-1 md:mt-3"><DayActivityList date={cell.dateKey} activities={dayActivities} compact/><CellCreateMenu departments={departments} date={cell.dateKey}/></div>}</header>
+                  <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 md:block md:border-b-0 md:border-r md:px-5 md:py-5"><div><p className={`text-sm font-bold ${weekdayTone(index, true)}`}>{formatWeekDate(cell.dateKey)}（{weekWeekdays[index]}）</p>{holidayName(cell.dateKey) && <p className="mt-1 text-xs font-bold text-red-600">{holidayName(cell.dateKey)}</p>}</div>{context.role === "sales_rep" && <div className="flex items-center gap-1 md:mt-3"><DayActivityList date={cell.dateKey} activities={dayActivities} compact/><CellCreateMenu departments={departments} date={cell.dateKey} align="left"/></div>}</header>
                   <div className="min-h-20 px-4 py-2 md:px-5">{dayActivities.length ? <div>{dayActivities.map((activity) => <ActivityDetailsDialog key={activity.id} activity={activity} calendarView="week" canManage={context.role === "sales_rep" && activity.employeeId === context.employeeId}/>)}</div> : <p className="py-4 text-sm text-slate-400">予定はありません</p>}</div>
                 </section>; })}
               </div> : <>
@@ -284,3 +285,16 @@ function confidenceLabel(value: string) { return ({ A: "Ａ：高い", B: "Ｂ�
 function recentActivityHref(activity: RecentActivityRow, opportunities: OpportunityRow[]) { const opportunity = opportunities.find((row) => row.id === activity.schedule_details?.opportunityId || row.source_activity_id === activity.id); if (opportunity) return `/opportunities/${opportunity.id}?activityId=${activity.id}#activity-detail`; return activity.customer_id ? `/customers/${activity.customer_id}?section=activities&activityId=${activity.id}#activities` : "/"; }
 function normalizeConfidence(value?: string) { const match = value?.match(/[A-DＡ-Ｄ]/)?.[0] ?? ""; return ({ "Ａ": "A", "Ｂ": "B", "Ｃ": "C", "Ｄ": "D" } as Record<string, string>)[match] ?? match; }
 function reportOrderAmount(report: OrderActivityRow["common_report"]) { if (!report) return 0; const productsTotal = (report.products ?? []).reduce((sum, product) => sum + Math.max(0, Number(product.amount) || 0), 0); return Math.max(0, Number(report.orderAmount) || productsTotal); }
+
+async function fetchAllPickupCustomers(db: SupabaseClient, organizationId: string, departmentIds: string[]) {
+  const pageSize = 1000;
+  const rows: { id: string; name: string }[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await db.from("customers").select("id,name").eq("organization_id", organizationId).in("department_id", departmentIds).order("name").range(from, from + pageSize - 1);
+    if (error) throw new Error("ピックアップ対象の顧客を取得できませんでした。", { cause: error });
+    const page = (data ?? []) as { id: string; name: string }[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return { data: rows };
+}
