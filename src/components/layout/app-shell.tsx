@@ -20,6 +20,6 @@ export function AppShell({ active, displayName, department, children }: { active
       </div>
     </header>
     <main>{children}</main>
-    <nav className="fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-slate-200 bg-white md:hidden">{items.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`flex min-w-20 flex-1 flex-col items-center gap-1 py-2 text-[9px] font-semibold ${active === href ? "text-amber-800" : "text-slate-400"}`}><Icon size={18} />{label}</Link>)}</nav>
+    <nav className="fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">{items.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`flex min-h-14 min-w-20 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[9px] font-semibold ${active === href ? "text-amber-800" : "text-slate-400"}`}><Icon size={18} />{label}</Link>)}</nav>
   </div>;
 }

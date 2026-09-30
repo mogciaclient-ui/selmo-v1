@@ -8,8 +8,14 @@
   --font-mono: "SFMono-Regular", Consolas, monospace;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--background); color: var(--foreground); font-family: Arial, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; overflow-x: hidden; background: var(--background); color: var(--foreground); font-family: Arial, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; }
 button { cursor: pointer; }
 .event-blue { background: #fffaf0; color: #18212f; border: 1px solid #ead27b; border-left: 4px solid #e5ad00; }
 .event-violet { background: #f0eafb; color: #6d45a2; border-left: 3px solid #8b65bc; }
 .event-amber { background: #fff3d9; color: #8a5a00; border-left: 3px solid #d69b25; }
+
+@media (max-width: 639px) {
+  input, select, textarea { font-size: 16px; }
+  dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
+}
