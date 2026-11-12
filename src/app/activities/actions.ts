@@ -1,5 +1,10 @@
 "use server";
 
+import { findProductOptions } from "@/infrastructure/supabase/product-options-repository";
+import { scheduleReportDefaults } from "@/domain/schedules/rules";
+
+import { canActAsSalesRep } from "@/lib/auth/roles";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -8,7 +13,8 @@ import { deleteSalesActivity } from "@/application/activities/delete-sales-activ
 import { updateSalesActivity } from "@/application/activities/update-sales-activity";
 import { createSupabaseSalesActivityRepository } from "@/infrastructure/supabase/sales-activity-repository";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
-import { syncOpportunityFromActivity } from "@/lib/activities/sync-opportunity-from-activity";
+import { scheduleSchema } from "@/domain/schedules/schema";
+import { scheduleTypeLabels } from "@/domain/schedules/rules";
 
 const activityFields = {
   departmentId: z.uuid(),
@@ -22,7 +28,7 @@ const activityFields = {
   endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
 } satisfies z.ZodRawShape;
 
-const activitySchema = z.object(activityFields);
+
 
 export type CreateActivityState = { message?: string };
 export type MutateActivityState = { message?: string; success?: boolean };
@@ -39,63 +45,33 @@ const memoSchema = z.object({
 export async function createActivity(_: CreateActivityState, formData: FormData): Promise<CreateActivityState> {
   const context = await getCurrentUser();
   if (!context) return { message: "ログインし直してください。" };
-  if (context.role !== "sales_rep") return { message: "管理者アカウントは閲覧専用です。" };
+  if (!canActAsSalesRep(context.role)) return { message: "管理者アカウントは閲覧専用です。" };
 
-  const parsed = activitySchema.safeParse({
-    departmentId: formData.get("departmentId"),
-    customerId: formData.get("customerId") ?? "",
-    newCustomerName: formData.get("newCustomerName") ?? "",
-    title: formData.get("title"),
-    activityType: formData.get("activityType"),
-    date: formData.get("date"),
-    endDate: formData.get("endDate") || undefined,
-    startTime: formData.get("startTime"),
-    endTime: formData.get("endTime"),
-  });
+  const parsed = scheduleSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "入力内容を確認してください。" };
-
-  try {
-    const activityId = await createSalesActivity(createSupabaseSalesActivityRepository(context.db, context), {
-      departmentId: parsed.data.departmentId,
-      customerId: parsed.data.customerId,
-      newCustomerName: parsed.data.newCustomerName,
-      title: parsed.data.title,
-      activityType: parsed.data.activityType,
-      startsAt: new Date(`${parsed.data.date}T${parsed.data.startTime}:00+09:00`).toISOString(),
-      endsAt: new Date(`${parsed.data.endDate ?? parsed.data.date}T${parsed.data.endTime}:00+09:00`).toISOString(),
-      scheduleDetails: {
-        category: String(formData.get("category") ?? "sales"),
-        color: String(formData.get("color") ?? "#a85600"),
-        locationType: String(formData.get("locationType") ?? "external"),
-        location: String(formData.get("location") ?? "").trim(),
-        opportunityId: String(formData.get("opportunityId") ?? "").trim(),
-        opportunityName: String(formData.get("opportunityName") ?? "").trim(),
-        salesType: String(formData.get("salesType") ?? "").trim(),
-        salesProcess: String(formData.get("salesProcess") ?? "").trim(),
-        progressStep: String(formData.get("progressStep") ?? "").trim(),
-        notes: String(formData.get("notes") ?? "").trim(),
-        visibility: String(formData.get("visibility") ?? "public"),
-        mailNotification: formData.get("mailNotification") === "yes",
-      },
-    });
-    const { data: activity } = await context.db.from("activities").select("customer_id").eq("id", activityId).eq("organization_id", context.organizationId).single();
-    await syncOpportunityFromActivity(context.db, {
-      organizationId: context.organizationId,
-      activityId,
-      departmentId: parsed.data.departmentId,
-      customerId: activity?.customer_id ?? null,
-      employeeId: context.employeeId,
-      title: parsed.data.title,
-      activityDate: parsed.data.date,
-      opportunityId: String(formData.get("opportunityId") ?? ""),
-      opportunityName: String(formData.get("opportunityName") ?? ""),
-      salesType: String(formData.get("salesType") ?? ""),
-      salesProcess: String(formData.get("salesProcess") ?? ""),
-      progressStep: String(formData.get("progressStep") ?? ""),
-    });
-  } catch (error) {
-    return { message: error instanceof Error ? error.message : "営業予定を登録できませんでした。" };
+  const input = parsed.data;
+  if (input.product) {
+    const options = await findProductOptions(context.db, context.organizationId).catch(() => null);
+    if (!options) return { message: "商材マスタを取得できませんでした。" };
+    if (!options.includes(input.product)) return { message: "商材マスタから有効な商材を選んでください。" };
   }
+  if (input.opportunityId) {
+    const { data } = await context.db.from("opportunities").select("id").eq("organization_id", context.organizationId).eq("id", input.opportunityId).eq("customer_id", input.customerId).in("department_id", context.departmentIds).maybeSingle();
+    if (!data) return { message: "関連する案件を確認できませんでした。" };
+  }
+  if (input.pickupId) {
+    const { data } = await context.db.from("monthly_customer_pickups").select("id").eq("id", input.pickupId).eq("organization_id", context.organizationId).eq("employee_id", context.employeeId).eq("customer_id", input.customerId).maybeSingle();
+    if (!data) return { message: "対象のターゲットを確認できませんでした。" };
+  }
+  try {
+    await createSalesActivity(createSupabaseSalesActivityRepository(context.db, context), {
+      departmentId: input.departmentId, customerId: input.customerId || null, newCustomerName: null,
+      title: scheduleTypeLabels[input.activityType], activityType: input.activityType,
+      startsAt: new Date(`${input.date}T${input.startTime}:00+09:00`).toISOString(),
+      endsAt: new Date(`${input.date}T${input.endTime}:00+09:00`).toISOString(),
+      scheduleDetails: { schemaVersion: "2", ...scheduleReportDefaults(input.category, input.activityType), category: input.category, customerType: input.customerType, product: input.product, area: input.area, opportunityId: input.opportunityId, pickupId: input.pickupId },
+    });
+  } catch (error) { return { message: error instanceof Error ? error.message : "予定を登録できませんでした。" }; }
 
   redirect("/");
 }
@@ -103,7 +79,7 @@ export async function createActivity(_: CreateActivityState, formData: FormData)
 export async function createActivityMemo(_: CreateActivityState, formData: FormData): Promise<CreateActivityState> {
   const context = await getCurrentUser();
   if (!context) return { message: "ログインし直してください。" };
-  if (context.role !== "sales_rep") return { message: "管理者アカウントは閲覧専用です。" };
+  if (!canActAsSalesRep(context.role)) return { message: "管理者アカウントは閲覧専用です。" };
   const parsed = memoSchema.safeParse({
     departmentId: formData.get("departmentId"),
     customerName: formData.get("customerName"),
@@ -144,42 +120,32 @@ export async function createActivityMemo(_: CreateActivityState, formData: FormD
   redirect("/");
 }
 
-const updateActivitySchema = z.object({
-  id: z.uuid(),
-  title: activityFields.title,
-  activityType: activityFields.activityType,
-  date: activityFields.date,
-  startTime: activityFields.startTime,
-  endTime: activityFields.endTime,
-});
-
 export async function updateActivity(_: MutateActivityState, formData: FormData): Promise<MutateActivityState> {
   const context = await getCurrentUser();
   if (!context) return { message: "ログインし直してください。" };
-  if (context.role !== "sales_rep") return { message: "管理者アカウントは閲覧専用です。" };
+  if (!canActAsSalesRep(context.role)) return { message: "管理者アカウントは閲覧専用です。" };
 
-  const parsed = updateActivitySchema.safeParse({
-    id: formData.get("id"),
-    title: formData.get("title"),
-    activityType: formData.get("activityType"),
-    date: formData.get("date"),
-    startTime: formData.get("startTime"),
-    endTime: formData.get("endTime"),
-  });
-  if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "入力内容を確認してください。" };
-
+  const id = z.uuid().safeParse(formData.get("id"));
+  if (!id.success) return { message: "予定が正しくありません。" };
+  const { data: existing, error: lookupError } = await context.db.from("activities").select("department_id,customer_id,schedule_details").eq("id", id.data).eq("organization_id", context.organizationId).eq("employee_id", context.employeeId).maybeSingle();
+  if (lookupError || !existing) return { message: "この予定を変更する権限がありません。" };
+  const parsed = scheduleSchema.safeParse({ ...Object.fromEntries(formData), departmentId: existing.department_id, customerId: existing.customer_id ?? "" });
+  if (!parsed.success) return { message: parsed.error.issues[0]?.message };
+  const input = parsed.data;
+  if (input.product && input.product !== existing.schedule_details?.product) {
+    const options = await findProductOptions(context.db, context.organizationId).catch(() => null);
+    if (!options) return { message: "商材マスタを取得できませんでした。" };
+    if (!options.includes(input.product)) return { message: "商材マスタから有効な商材を選んでください。" };
+  }
   try {
     await updateSalesActivity(createSupabaseSalesActivityRepository(context.db, context), {
-      id: parsed.data.id,
-      title: parsed.data.title,
-      activityType: parsed.data.activityType,
-      startsAt: new Date(`${parsed.data.date}T${parsed.data.startTime}:00+09:00`).toISOString(),
-      endsAt: new Date(`${parsed.data.date}T${parsed.data.endTime}:00+09:00`).toISOString(),
+      id: id.data, title: scheduleTypeLabels[input.activityType], activityType: input.activityType,
+      startsAt: new Date(`${input.date}T${input.startTime}:00+09:00`).toISOString(), endsAt: new Date(`${input.date}T${input.endTime}:00+09:00`).toISOString(),
+      scheduleDetails: { ...(existing.schedule_details ?? {}), ...scheduleReportDefaults(input.category, input.activityType), category: input.category, customerType: input.customerType, area: input.area, product: input.product },
     });
-  } catch (error) {
-    return { message: error instanceof Error ? error.message : "予定を更新できませんでした。" };
-  }
+  } catch (error) { return { message: error instanceof Error ? error.message : "予定を更新できませんでした。" }; }
 
+  revalidatePath("/targets");
   revalidatePath("/");
   return { success: true };
 }
@@ -189,7 +155,7 @@ const deleteActivitySchema = z.object({ id: z.uuid() });
 export async function deleteActivity(_: MutateActivityState, formData: FormData): Promise<MutateActivityState> {
   const context = await getCurrentUser();
   if (!context) return { message: "ログインし直してください。" };
-  if (context.role !== "sales_rep") return { message: "管理者アカウントは閲覧専用です。" };
+  if (!canActAsSalesRep(context.role)) return { message: "管理者アカウントは閲覧専用です。" };
 
   const parsed = deleteActivitySchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return { message: "削除対象が正しくありません。" };
@@ -200,6 +166,7 @@ export async function deleteActivity(_: MutateActivityState, formData: FormData)
     return { message: error instanceof Error ? error.message : "予定を削除できませんでした。" };
   }
 
+  revalidatePath("/targets");
   revalidatePath("/");
   return { success: true };
 }

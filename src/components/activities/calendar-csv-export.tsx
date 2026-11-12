@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Download } from "lucide-react";
-export function CalendarCsvExport({ defaultStart, defaultEnd, departmentId, employeeId }: { defaultStart: string; defaultEnd: string; departmentId?: string; employeeId?: string }) {
+export function CalendarCsvExport({ defaultStart, defaultEnd, departmentId, employeeId, employeeIds }: { defaultStart: string; defaultEnd: string; departmentId?: string; employeeId?: string; employeeIds?: string[] }) {
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
   const [message, setMessage] = useState("");
@@ -14,7 +14,8 @@ export function CalendarCsvExport({ defaultStart, defaultEnd, departmentId, empl
     const limit = new Date(startDate); limit.setMonth(limit.getMonth() + 3); limit.setDate(limit.getDate() + 1);
     if (endDate >= limit) return setMessage("日付範囲は最大3か月までです。");
     setMessage("CSVを作成しています…");
-    const params = new URLSearchParams({ start, end }); if (departmentId) params.set("departmentId", departmentId); if (employeeId) params.set("employeeId", employeeId);
+    const params = new URLSearchParams({ start, end });
+    if (employeeIds) { params.set("selectionProvided", "1"); employeeIds.forEach(id => params.append("employeeIds", id)); } if (departmentId) params.set("departmentId", departmentId); if (employeeId) params.set("employeeId", employeeId);
     const response = await fetch(`/api/schedule/export?${params}`);
     if (!response.ok) { const body = await response.json().catch(() => ({})) as { message?: string }; return setMessage(body.message ?? "CSVを出力できませんでした。"); }
     const url = URL.createObjectURL(await response.blob());

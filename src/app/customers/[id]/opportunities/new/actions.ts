@@ -1,5 +1,7 @@
 "use server";
 
+import { isDepartmentAdmin } from "@/lib/auth/roles";
+
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
@@ -21,7 +23,7 @@ export async function createBasicOpportunity(_: BasicOpportunityState, formData:
   if (!product) return { message: "有効な商材を選択してください。" };
   let ownerQuery = context.db.from("app_users").select("employee_id,app_user_departments!inner(department_id)").eq("organization_id", context.organizationId).eq("employee_id", value.employeeId).eq("status", "active");
   if (context.role === "sales_rep") ownerQuery = ownerQuery.eq("employee_id", context.employeeId);
-  if (context.role === "department_admin") ownerQuery = ownerQuery.eq("app_user_departments.department_id", customer.department_id);
+  if (isDepartmentAdmin(context.role)) ownerQuery = ownerQuery.eq("app_user_departments.department_id", customer.department_id);
   const { data: owner } = await ownerQuery.limit(1).maybeSingle();
   if (!owner) return { message: "主営業担当を選択できません。" };
   const { data: opportunity, error } = await context.db.from("opportunities").insert({ organization_id: context.organizationId, department_id: customer.department_id, customer_id: customer.id, employee_id: value.employeeId, name: value.name, product_name: value.productName, branch_name: value.branchName || null, customer_contact: value.customerContact || null, team_visibility: value.teamVisibility, notes: value.notes || null, status: value.status, stage: "approach", confidence: "B", priority: "medium", expected_amount: 0, order_amount: 0 }).select("id").single();

@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { authRoles } from "@/lib/auth/roles";
 import { z } from "zod";
 import { getFirebaseAdminAuth } from "@/lib/firebase/admin";
 import { requireOrganizationAdmin } from "@/lib/auth/require-auth";
 
 export type UserActionState = { message?: string; success?: boolean };
-const createSchema = z.object({ name: z.string().trim().min(1).max(100), email: z.email(), departmentId: z.uuid(), role: z.enum(["sales_rep", "department_admin", "organization_admin"]) });
+const createSchema = z.object({ name: z.string().trim().min(1).max(100), email: z.email(), departmentId: z.uuid(), role: z.enum(authRoles) });
 
 export async function createUser(_: UserActionState, formData: FormData): Promise<UserActionState> {
   const context = await requireOrganizationAdmin();

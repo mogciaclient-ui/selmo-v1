@@ -1,5 +1,7 @@
 "use server";
 
+import { isDepartmentAdmin } from "@/lib/auth/roles";
+
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -21,7 +23,7 @@ export async function generateScenarioDraft(input: z.infer<typeof requestSchema>
   if (!await isAvailableProduct(context.db, context.organizationId, parsed.data.product)) return { message: "有効な商材を選択してください。" };
   let analysisQuery = context.db.from("activity_ai_analyses").select("activity_id,analysis,activities!inner(employee_id,department_id)").eq("organization_id", context.organizationId).eq("status", "completed").order("updated_at", { ascending: false }).limit(20);
   if (context.role === "sales_rep") analysisQuery = analysisQuery.eq("activities.employee_id", context.employeeId);
-  if (context.role === "department_admin") analysisQuery = analysisQuery.in("activities.department_id", context.departmentIds);
+  if (isDepartmentAdmin(context.role)) analysisQuery = analysisQuery.in("activities.department_id", context.departmentIds);
   const { data: rows } = await analysisQuery;
   const analyses = (rows ?? []) as unknown as { activity_id: string; analysis: { improvements?: { point?: string; evidence?: string }[] } | null }[];
   const improvements = analyses.flatMap((row) => row.analysis?.improvements ?? []).map((item) => [item.point, item.evidence].filter(Boolean).join("：")).filter(Boolean).slice(0, 12);

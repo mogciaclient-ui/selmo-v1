@@ -1,4 +1,5 @@
 import "server-only";
+import { salesManualContext } from "@/lib/activities/sales-manuals";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { analyzeSalesTranscript } from "@/lib/openai/analyze-sales-transcript";
 import { transcribeSalesAudio } from "@/lib/openai/transcribe-sales-audio";
@@ -10,12 +11,12 @@ export async function processActivityAudio(input: { organizationId: string; acti
     const [{ data: audio, error: audioError }, { data: voice }, { data: activity }] = await Promise.all([
       db.storage.from("sales-audio").download(input.audioPath),
       db.from("employee_voice_references").select("storage_path").eq("organization_id", input.organizationId).eq("employee_id", input.employeeId).maybeSingle(),
-      db.from("activities").select("common_report").match({ organization_id: input.organizationId, id: input.activityId }).maybeSingle(),
+      db.from("activities").select("common_report,department_id").match({ organization_id: input.organizationId, id: input.activityId }).maybeSingle(),
     ]);
     if (audioError || !audio) throw new Error("アップロードした音声を取得できませんでした。");
     const reference = voice?.storage_path ? (await db.storage.from("sales-audio").download(voice.storage_path)).data ?? undefined : undefined;
     const transcribed = await transcribeSalesAudio(audio, input.audioPath.split("/").at(-1) || "meeting.mp3", reference);
-    const evaluated = await analyzeSalesTranscript(transcribed.transcript);
+    const evaluated = await analyzeSalesTranscript(transcribed.transcript, activity?.department_id ? await salesManualContext(db, input.organizationId, activity.department_id) : []);
     const updatedAt = new Date().toISOString();
     const { error } = await db.from("activity_ai_analyses").update({
       status: "completed", raw_transcript: transcribed.transcript, separated_transcript: evaluated.result.dialogue,

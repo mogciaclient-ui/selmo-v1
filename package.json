@@ -15,6 +15,12 @@
     "verify:migration": "node --env-file-if-exists=.env.local scripts/verify-migration.mjs",
     "verify:authorization": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/verify-authorization-e2e.mjs",
     "verify:business": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/verify-business-e2e.mjs",
+    "verify:daily-dashboard": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/verify-daily-dashboard.mjs",
+    "verify:analytics": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/verify-analytics.mjs",
+    "verify:report-cases": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/verify-report-case-updates.mjs",
+    "verify:todos": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/verify-todos.mjs",
+    "verify:targets": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/verify-targets.mjs",
+    "verify:schedules": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/verify-schedule-calendar.mjs",
     "verify:activity-sales": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/verify-activity-sales-flow.mjs",
     "import:yamaguchi-customers": "node --env-file-if-exists=.env.local scripts/import-yamaguchi-customers.mjs",
     "register:alpha-users": "node --env-file-if-exists=.env.local scripts/register-alpha-users.mjs"

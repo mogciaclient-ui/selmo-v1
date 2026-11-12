@@ -1,3 +1,4 @@
+import { isDepartmentAdmin } from "../../lib/auth/roles.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DashboardRepository } from "@/application/ports/dashboard-repository";
 import type { DashboardActivity } from "@/domain/dashboard/types";
@@ -11,6 +12,8 @@ type ActivityRow = {
   ends_at: string;
   status: string;
   result: string | null;
+  completed_at?: string | null;
+  was_overdue?: boolean;
   customer_id: string | null;
   employee_id: string;
   department_id: string;
@@ -19,30 +22,30 @@ type ActivityRow = {
   customers: { name: string; external_id: string } | { name: string; external_id: string }[] | null;
 };
 
-export function createSupabaseDashboardRepository(client: SupabaseClient, scope: RepositoryScope): DashboardRepository {
+export function createSupabaseDashboardRepository(client: SupabaseClient, scope: RepositoryScope, options: { teamCalendar?: boolean } = {}): DashboardRepository {
   return {
     async findActivitiesBetween(start, end) {
       let request = client
         .from("activities")
-        .select("id,title,activity_type,starts_at,ends_at,status,result,customer_id,employee_id,department_id,schedule_details,common_report,customers(name,external_id)")
+        .select("id,title,activity_type,starts_at,ends_at,status,result,customer_id,employee_id,department_id,schedule_details,common_report,completed_at,was_overdue,customers(name,external_id)")
         .eq("organization_id", scope.organizationId)
         .gte("starts_at", start)
         .lt("starts_at", end)
         .order("starts_at");
-      if (scope.role === "sales_rep") request = request.eq("employee_id", scope.employeeId);
-      if (scope.role === "department_admin") request = request.in("department_id", scope.departmentIds);
+      if (scope.role === "sales_rep" && !options.teamCalendar) request = request.eq("employee_id", scope.employeeId);
+      if (isDepartmentAdmin(scope.role) || (options.teamCalendar && scope.role === "sales_rep")) request = request.in("department_id", scope.departmentIds);
       let { data, error } = await request;
       if (error?.code === "42703") {
         let fallback = client.from("activities").select("id,title,activity_type,starts_at,ends_at,status,result,customer_id,employee_id,department_id,schedule_details,customers(name,external_id)").eq("organization_id", scope.organizationId).gte("starts_at", start).lt("starts_at", end).order("starts_at");
-        if (scope.role === "sales_rep") fallback = fallback.eq("employee_id", scope.employeeId);
-        if (scope.role === "department_admin") fallback = fallback.in("department_id", scope.departmentIds);
+        if (scope.role === "sales_rep" && !options.teamCalendar) fallback = fallback.eq("employee_id", scope.employeeId);
+        if (isDepartmentAdmin(scope.role) || (options.teamCalendar && scope.role === "sales_rep")) fallback = fallback.in("department_id", scope.departmentIds);
         const legacy = await fallback;
         data = legacy.data as typeof data;
         error = legacy.error;
         if (error?.code === "42703") {
           let oldest = client.from("activities").select("id,title,activity_type,starts_at,ends_at,status,result,customer_id,employee_id,department_id,customers(name,external_id)").eq("organization_id", scope.organizationId).gte("starts_at", start).lt("starts_at", end).order("starts_at");
-          if (scope.role === "sales_rep") oldest = oldest.eq("employee_id", scope.employeeId);
-          if (scope.role === "department_admin") oldest = oldest.in("department_id", scope.departmentIds);
+          if (scope.role === "sales_rep" && !options.teamCalendar) oldest = oldest.eq("employee_id", scope.employeeId);
+          if (isDepartmentAdmin(scope.role) || (options.teamCalendar && scope.role === "sales_rep")) oldest = oldest.in("department_id", scope.departmentIds);
           const legacyWithoutSchedule = await oldest;
           data = legacyWithoutSchedule.data as typeof data;
           error = legacyWithoutSchedule.error;
@@ -57,8 +60,8 @@ export function createSupabaseDashboardRepository(client: SupabaseClient, scope:
       const opportunityIds = new Map<string, string>();
       if (activityIds.length) {
         let opportunityRequest = client.from("opportunities").select("id,source_activity_id").eq("organization_id", scope.organizationId).in("source_activity_id", activityIds);
-        if (scope.role === "sales_rep") opportunityRequest = opportunityRequest.eq("employee_id", scope.employeeId);
-        if (scope.role === "department_admin") opportunityRequest = opportunityRequest.in("department_id", scope.departmentIds);
+        if (scope.role === "sales_rep" && !options.teamCalendar) opportunityRequest = opportunityRequest.eq("employee_id", scope.employeeId);
+        if (isDepartmentAdmin(scope.role) || (options.teamCalendar && scope.role === "sales_rep")) opportunityRequest = opportunityRequest.in("department_id", scope.departmentIds);
         const [{ data: analysisRows }, { data: opportunityRows }] = await Promise.all([
           client.from("activity_ai_analyses").select("activity_id,analysis").eq("organization_id", scope.organizationId).eq("status", "completed").in("activity_id", activityIds),
           opportunityRequest,
@@ -79,6 +82,7 @@ export function createSupabaseDashboardRepository(client: SupabaseClient, scope:
         endsAt: row.ends_at,
         status: row.status,
         result: row.result,
+        completedAt: row.completed_at, wasOverdue: row.was_overdue,
         employeeId: row.employee_id,
         departmentId: row.department_id,
         customerId: row.customer_id,
@@ -97,8 +101,8 @@ export function createSupabaseDashboardRepository(client: SupabaseClient, scope:
         .eq("organization_id", scope.organizationId)
         .lt("ends_at", before)
         .is("result", null);
-      if (scope.role === "sales_rep") request = request.eq("employee_id", scope.employeeId);
-      if (scope.role === "department_admin") request = request.in("department_id", scope.departmentIds);
+      if (scope.role === "sales_rep" && !options.teamCalendar) request = request.eq("employee_id", scope.employeeId);
+      if (isDepartmentAdmin(scope.role) || (options.teamCalendar && scope.role === "sales_rep")) request = request.in("department_id", scope.departmentIds);
       const { count, error } = await request;
 
       if (error) throw new Error("結果入力待ち件数を取得できませんでした。", { cause: error });

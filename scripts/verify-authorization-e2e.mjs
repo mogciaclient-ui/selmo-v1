@@ -1,3 +1,6 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { cert, initializeApp } from "firebase-admin/app";
@@ -29,6 +32,17 @@ async function signIn(email, password) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, returnSecureToken: true }),
   });
+}
+
+const base = process.env.VERIFY_BASE_URL || "http://localhost:3000";
+async function redirectsTo(response, path) {
+  const location = response.headers.get("location");
+  if (location && [303, 307, 308].includes(response.status)) {
+    return new URL(location, base).pathname === path;
+  }
+  // App Router can start streaming before the authorization check resolves.
+  const html = await response.text();
+  return response.ok && html.includes(`NEXT_REDIRECT;replace;${path};307;`);
 }
 
 try {
@@ -64,20 +78,46 @@ try {
   const activeSignIn = await signIn(testEmail, testPassword);
   if (!activeSignIn.ok) throw new Error("activeユーザーがFirebaseへログインできませんでした。");
   const { idToken } = await activeSignIn.json();
-  const sessionResponse = await fetch("http://localhost:3000/api/auth/session", {
+  const sessionResponse = await fetch(`${base}/api/auth/session`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Origin: "http://localhost:3000" },
+    headers: { "Content-Type": "application/json", Origin: base },
     body: JSON.stringify({ idToken }),
   });
   if (!sessionResponse.ok) throw new Error(`一般ユーザーのSession Cookieを発行できませんでした: ${sessionResponse.status}`);
   const sessionCookie = sessionResponse.headers.get("set-cookie")?.split(";", 1)[0];
   if (!sessionCookie) throw new Error("Session Cookieが応答にありません。");
-  const homeResponse = await fetch("http://localhost:3000/", { headers: { Cookie: sessionCookie }, redirect: "manual" });
+  const homeResponse = await fetch(`${base}/`, { headers: { Cookie: sessionCookie }, redirect: "manual" });
   if (homeResponse.status !== 200) throw new Error(`一般ユーザーが営業ホームを表示できませんでした: ${homeResponse.status}`);
-  const usersResponse = await fetch("http://localhost:3000/users", { headers: { Cookie: sessionCookie }, redirect: "manual" });
-  if (![303, 307, 308].includes(usersResponse.status) || new URL(usersResponse.headers.get("location"), "http://localhost:3000").pathname !== "/") {
+  const usersResponse = await fetch(`${base}/users`, { headers: { Cookie: sessionCookie }, redirect: "manual" });
+  if (!(await redirectsTo(usersResponse, "/"))) {
     throw new Error("一般ユーザーが/usersから拒否されませんでした。");
   }
+
+  const hybrid = await db.from("app_users").update({ role: "department_admin_sales_rep" }).eq("id", ids.testAppUser);
+  assert.ifError(hybrid.error);
+  const hybridHome = await (await fetch(`${base}/`, { headers: { Cookie: sessionCookie } })).text();
+  assert.match(hybridHome, /部門管理画面/);
+  assert.doesNotMatch(hybridHome, /開発用ロール切り替え/);
+  const manifest = JSON.parse(await readFile(new URL("../.next/dev/server/server-reference-manifest.json", import.meta.url), "utf8"));
+  const action = Object.entries(manifest.node).find(([, entry]) => entry.exportedName === "switchHybridView");
+  assert(action, "兼任の画面切り替えアクションがありません。");
+  const { encodeReply } = createRequire(import.meta.url)("next/dist/compiled/react-server-dom-webpack/client.node");
+  const form = new FormData();
+  form.set("mode", "manager");
+  const response = await fetch(`${base}/`, {
+    method: "POST",
+    redirect: "manual",
+    headers: { Cookie: sessionCookie, Origin: base, "next-action": action[0], Accept: "text/x-component" },
+    body: await encodeReply([form]),
+  });
+  const managerCookie = response.headers.getSetCookie().find((value) => value.startsWith("selmo_hybrid_manager_view="));
+  assert(managerCookie, "兼任の表示設定が保存されませんでした。");
+  const dashboardResponse = await fetch(`${base}/dashboard`, { headers: { Cookie: `${sessionCookie}; ${managerCookie.split(";")[0]}` } });
+  assert.equal(dashboardResponse.status, 200);
+  const dashboardHtml = await dashboardResponse.text();
+  assert.match(dashboardHtml, /チーム営業サマリー/);
+  assert.doesNotMatch(dashboardHtml, /開発用ロール切り替え|E2E別組織社員/);
+  console.log("OK: 通常の兼任アカウントで部門管理画面に切り替えられ、開発用ロール切り替えは表示されません。");
 
   await firebase.updateUser(firebaseUid, { disabled: true });
   await firebase.revokeRefreshTokens(firebaseUid);
@@ -86,8 +126,8 @@ try {
   const { error: inactiveEmployeeError } = await db.from("employees").update({ status: "inactive" }).eq("id", ids.testEmployee);
   if (inactiveEmployeeError) throw inactiveEmployeeError;
   if ((await signIn(testEmail, testPassword)).ok) throw new Error("inactiveユーザーがFirebaseへログインできてしまいました。");
-  const inactiveSessionResponse = await fetch("http://localhost:3000/", { headers: { Cookie: sessionCookie }, redirect: "manual" });
-  if (![303, 307, 308].includes(inactiveSessionResponse.status) || new URL(inactiveSessionResponse.headers.get("location"), "http://localhost:3000").pathname !== "/login") {
+  const inactiveSessionResponse = await fetch(`${base}/`, { headers: { Cookie: sessionCookie }, redirect: "manual" });
+  if (!(await redirectsTo(inactiveSessionResponse, "/login"))) {
     throw new Error("利用停止後も既存Session Cookieで業務画面へアクセスできました。");
   }
   const [{ count: employeeCount }, { count: activityCount }] = await Promise.all([

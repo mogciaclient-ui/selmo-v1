@@ -31,21 +31,21 @@ try {
   await syncOpportunityFromActivity(db, base);
   await syncOpportunityFromActivity(db, { ...base, activityStatus: "受注", confidence: "A：高" });
 
-  const { data: opportunities, error: opportunityError } = await db.from("opportunities").select("id,status,confidence,customer_id,source_activity_id,expected_close_date").eq("source_activity_id", activityId);
+  const { data: opportunities, error: opportunityError } = await db.from("opportunities").select("id,status,confidence,customer_id,expected_close_date").eq("customer_id", customerId).eq("employee_id", admin.employee_id).eq("product_name", base.product).is("merged_into_id", null);
   if (opportunityError) throw opportunityError;
   if (opportunities.length !== 1) throw new Error(`案件が${opportunities.length}件作成されました。1件である必要があります。`);
   const opportunity = opportunities[0];
   opportunityId = opportunity.id;
   if (opportunity.status !== "won" || opportunity.confidence !== "A" || opportunity.customer_id !== customerId || opportunity.expected_close_date !== activityDate) throw new Error("活動内容が案件・受注情報へ正しく反映されていません。");
 
-  const { data: linkedActivity, error: linkedError } = await db.from("activities").select("id,customer_id").eq("id", activityId).single();
-  if (linkedError || linkedActivity.customer_id !== customerId) throw new Error("活動が顧客へ連携されていません。");
+  const { data: linkedActivity, error: linkedError } = await db.from("activities").select("id,customer_id,schedule_details").eq("id", activityId).single();
+  if (linkedError || linkedActivity.customer_id !== customerId || linkedActivity.schedule_details?.opportunityId !== opportunityId) throw new Error("活動が顧客へ連携されていません。");
 
   console.log("OK: 活動は顧客に連携されています。");
-  console.log("OK: 予定登録から案件が自動生成されます。");
+  console.log("OK: 活動報告から案件が自動生成されます。");
   console.log("OK: 活動報告の受注・確度・予定日が同じ案件へ反映され、重複しません。");
 } finally {
-  if (opportunityId) await db.from("opportunities").delete().eq("id", opportunityId);
+  if (customerId) await db.from("opportunities").delete().eq("customer_id", customerId);
   if (activityId) await db.from("activities").delete().eq("id", activityId);
   if (customerId) await db.from("customers").delete().eq("id", customerId);
 }

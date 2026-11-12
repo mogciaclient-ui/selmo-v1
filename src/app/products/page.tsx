@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { canManageProducts } from "@/domain/targets/rules";
 import { AppShell } from "@/components/layout/app-shell";
 import { ProductDialog, type Product } from "@/components/products/product-dialog";
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -7,12 +9,13 @@ type ProductRow = { id: string; name: string; name_kana: string | null; model_nu
 
 export default async function ProductsPage() {
   const context = await requireAuth();
+  if (!canManageProducts(context.role)) redirect("/targets");
   const { data, error } = await context.db.from("products").select("id,name,name_kana,model_number,price,size,weight,capacity,color,manufacturer_name,manufacturer_url,description,notes,action_process,status").eq("organization_id", context.organizationId).order("created_at").limit(1000);
   const databaseRows = (data ?? []) as ProductRow[];
   const rows: Product[] = error?.code === "42P01" || databaseRows.length === 0
     ? defaultProductNames.map((name) => ({ name, status: "active" as const }))
     : databaseRows.map(toProduct);
-  const canEdit = context.role === "organization_admin";
+  const canEdit = canManageProducts(context.role);
 
   return <AppShell active="/products" displayName={context.displayName} department={context.departmentName}>
     <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-4 px-5 py-5 md:px-8 md:py-6"><div><p className="text-xs font-bold text-amber-800">PRODUCTS</p><h1 className="mt-1 text-2xl font-bold">商材リスト</h1><p className="mt-1 text-sm text-slate-400">取扱商材の基本情報と状態を管理します。</p></div>{canEdit && <ProductDialog/>}</div></header>

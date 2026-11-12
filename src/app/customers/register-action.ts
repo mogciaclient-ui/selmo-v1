@@ -4,16 +4,18 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
 
-export type RegisterCustomerState = { message?: string; success?: boolean; customerExternalId?: string };
+import type { CustomerSearchResult } from "@/domain/customers/types";
+
+export type RegisterCustomerState = { message?: string; success?: boolean; customerExternalId?: string; customer?: CustomerSearchResult };
 
 const text = (max = 500) => z.string().trim().max(max);
 const schema = z.object({
-  departmentId: text(36), name: text(200), nameKana: text(200), branchName: text(200), branchKana: text(200),
+  departmentId: text(36), name: z.string().trim().min(1, "顧客名を入力してください。").max(200), nameKana: text(200), branchName: text(200), branchKana: text(200),
   postalCode: text(20), prefecture: text(20), address1: text(500),
 });
 
 const detailKeys = [
-  "corporatePosition", "shortName", "shortNameKana", "representative", "representativeKana", "url", "listing", "capital", "employeesCount", "basicNotes", "customerCategory", "alphaHikari", "alphaDenki", "axcel",
+  "corporatePosition", "shortName", "shortNameKana", "representative", "representativeKana", "url", "listing", "capital", "employeesCount", "basicNotes", "customerCategory", "alphaHikari", "alphaDenki",
   "branchAddress2", "branchFax", "branchNotes", "bookmark",
 ] as const;
 
@@ -56,9 +58,9 @@ export async function registerCustomer(_: RegisterCustomerState, formData: FormD
     address: address || null,
     notes: optional(formData, "basicNotes") || null,
     registration_details: details,
-  }).select("external_id").single();
+  }).select("id,external_id,name,phone,address,department_id").single();
   if (error) return { message: error.code === "42703" ? "顧客登録用のデータベース更新を適用してください。" : "顧客を登録できませんでした。" };
   revalidatePath("/customers");
   revalidatePath("/");
-  return { success: true, message: "顧客を登録しました。", customerExternalId: customer.external_id };
+  return { success: true, message: "顧客を登録しました。", customerExternalId: customer.external_id, customer: { id: customer.id, name: customer.name, phone: customer.phone, address: customer.address, departmentId: customer.department_id } };
 }

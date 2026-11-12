@@ -1,5 +1,6 @@
 "use server";
 
+import { canManageProducts } from "@/domain/targets/rules";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
@@ -18,7 +19,7 @@ const schema = z.object({
 export async function saveProduct(_: ProductActionState, formData: FormData): Promise<ProductActionState> {
   const context = await getCurrentUser();
   if (!context) return { message: "ログインし直してください。" };
-  if (context.role !== "organization_admin") return { message: "商材を登録・編集できるのは全体管理者だけです。" };
+  if (!canManageProducts(context.role)) return { message: "商材を登録・編集できるのは部門管理者・本部管理者だけです。" };
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "入力内容を確認してください。" };
   const value = parsed.data;

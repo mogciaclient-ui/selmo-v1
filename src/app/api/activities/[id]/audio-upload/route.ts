@@ -1,3 +1,4 @@
+import { isDepartmentAdmin } from "@/lib/auth/roles";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
@@ -17,7 +18,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!parsed.success) return Response.json({ message: "音声ファイルはMP3・M4A・WAV・WebM・MP4、25MB以下にしてください。" }, { status: 400 });
   let query = user.db.from("activities").select("id,employee_id,department_id").eq("id", id).eq("organization_id", user.organizationId);
   if (user.role === "sales_rep") query = query.eq("employee_id", user.employeeId);
-  if (user.role === "department_admin") query = query.in("department_id", user.departmentIds);
+  if (isDepartmentAdmin(user.role)) query = query.in("department_id", user.departmentIds);
   const { data: activity } = await query.maybeSingle();
   if (!activity) return Response.json({ message: "この活動へ音声を登録する権限がありません。" }, { status: 404 });
   if (parsed.data.kind === "voice-reference" && activity.employee_id !== user.employeeId) return Response.json({ message: "参照音声は本人だけ登録できます。" }, { status: 403 });

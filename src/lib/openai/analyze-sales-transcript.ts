@@ -1,3 +1,4 @@
+import { manualReferenceInput } from "@/domain/analytics/manual-prompt";
 import "server-only";
 
 import { z } from "zod";
@@ -26,17 +27,24 @@ const evaluationJsonSchema = { type: "object", additionalProperties: false, prop
   nextAction: { type: "string" },
 }, required: ["summary", "score", "customerTemperature", "customerIssues", "customerNeeds", "proposalSummary", "objections", "decisions", "nextSteps", "riskSignals", "keyQuotes", "strengths", "improvements", "nextAction"] } as const;
 
-type ResponseBody = { output_text?: string; error?: { message?: string }; output?: Array<{ content?: Array<{ type?: string; text?: string }> }> };
+type ResponseBody = { output_text?: string; output?: Array<{ content?: Array<{ type?: string; text?: string }> }> };
 async function structuredResponse<T>(apiKey: string, model: string, name: string, schema: object, instructions: string, input: string, parser: z.ZodType<T>) {
   const response = await fetch("https://api.openai.com/v1/responses", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, store: false, instructions, input, text: { format: { type: "json_schema", name, strict: true, schema } } }) });
+  if (!response.ok) {
+    console.error("[sales-analysis] OpenAI request failed", { status: response.status, requestId: response.headers.get("x-request-id") });
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("AI分析サービスの認証に失敗しました。管理者に連絡してください。");
+    }
+    if (response.status === 429) throw new Error("AI分析サービスの利用上限に達しました。時間をおいて再分析してください。");
+    throw new Error("AI分析サービスに接続できませんでした。時間をおいて再分析してください。");
+  }
   const body = await response.json() as ResponseBody;
-  if (!response.ok) throw new Error(body.error?.message || "AI分析APIの呼び出しに失敗しました。");
   const output = body.output_text ?? body.output?.flatMap((item) => item.content ?? []).find((item) => item.type === "output_text")?.text;
   if (!output) throw new Error("AI分析結果を取得できませんでした。");
   return parser.parse(JSON.parse(output));
 }
 
-export async function analyzeSalesTranscript(transcript: string) {
+export async function analyzeSalesTranscript(transcript: string, manuals: { title: string; content: string }[] = []) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEYが設定されていません。");
   const model = process.env.OPENAI_ANALYSIS_MODEL || "gpt-5.4-mini";
@@ -46,6 +54,6 @@ export async function analyzeSalesTranscript(transcript: string) {
   const labeledTranscript = separated.dialogue.map((item) => `${item.speaker}: ${item.text}`).join("\n");
   const evaluation = await structuredResponse(apiKey, model, "sales_conversation_evaluation", evaluationJsonSchema,
     "あなたは日本語の営業商談分析者です。入力には営業・顧客の話者ラベルが確定済みです。営業の発言だけを営業品質の評価対象とし、顧客発言を営業の成果に混ぜないでください。根拠は入力中の実際の発言を短く引用し、存在しない事実を作らないでください。商談全体の要約、顧客の課題・ニーズ、営業の提案内容、顧客の反論や懸念、合意・決定事項、次の対応、失注リスク、重要発言、温度感、営業の強みと改善点を項目別に具体化してください。該当情報がない配列は空にしてください。nextActionは営業が最優先で行う一つの行動にしてください。",
-    `次の話者分離済み商談を分析してください。\n\n${labeledTranscript}`, evaluationSchema);
+    manualReferenceInput(labeledTranscript, manuals), evaluationSchema);
   return { model, result: resultSchema.parse({ dialogue: separated.dialogue, ...evaluation }) };
 }

@@ -1,15 +1,17 @@
+import { salesManualContext } from "@/lib/activities/sales-manuals";
+import { canActAsSalesRep, isDepartmentAdmin } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
 import { analyzeSalesTranscript } from "@/lib/openai/analyze-sales-transcript";
 
 async function authorize(id: string) {
   const user = await getCurrentUser();
   if (!user) return { response: Response.json({ message: "ログインし直してください。" }, { status: 401 }) };
-  let query = user.db.from("activities").select("id").eq("id", id).eq("organization_id", user.organizationId);
+  let query = user.db.from("activities").select("id,department_id,employee_id").eq("id", id).eq("organization_id", user.organizationId);
   if (user.role === "sales_rep") query = query.eq("employee_id", user.employeeId);
-  if (user.role === "department_admin") query = query.in("department_id", user.departmentIds);
+  if (isDepartmentAdmin(user.role)) query = query.in("department_id", user.departmentIds);
   const { data } = await query.maybeSingle();
   if (!data) return { response: Response.json({ message: "分析結果を表示する権限がありません。" }, { status: 404 }) };
-  return { user };
+  return { user, departmentId: data.department_id, employeeId: data.employee_id };
 }
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
@@ -24,10 +26,13 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const authorized = await authorize(id); if (authorized.response) return authorized.response; const user = authorized.user!;
+  if (!canActAsSalesRep(user.role) || authorized.employeeId !== user.employeeId) {
+    return Response.json({ message: "再分析できるのは活動担当者のみです。" }, { status: 403 });
+  }
   const { data } = await user.db.from("activity_ai_analyses").select("raw_transcript,audio_metrics").eq("organization_id", user.organizationId).eq("activity_id", id).maybeSingle();
   if (!data?.raw_transcript) return Response.json({ message: "再分析できる文字起こしがありません。" }, { status: 404 });
   try {
-    const evaluated = await analyzeSalesTranscript(data.raw_transcript);
+    const evaluated = await analyzeSalesTranscript(data.raw_transcript, await salesManualContext(user.db, user.organizationId, authorized.departmentId!));
     const updatedAt = new Date().toISOString();
     const analysis = { ...evaluated.result, ...(data.audio_metrics ? { audioMetrics: data.audio_metrics } : {}) };
     const { error } = await user.db.from("activity_ai_analyses").update({ status: "completed", separated_transcript: evaluated.result.dialogue, analysis, model: evaluated.model, error_message: null, updated_at: updatedAt }).eq("organization_id", user.organizationId).eq("activity_id", id);

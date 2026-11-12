@@ -1,0 +1,76 @@
+import assert from "node:assert/strict";
+import { randomUUID, randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { createClient } from "@supabase/supabase-js";
+import { cert, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { analyticsData } from "../src/infrastructure/supabase/analytics-repository.ts";
+import { summarizeMetrics } from "../src/domain/analytics/metrics.ts";
+import { summarizeDailyNumbers } from "../src/domain/analytics/daily-dashboard.ts";
+const require = createRequire(import.meta.url);
+const { encodeReply } = require("next/dist/compiled/react-server-dom-webpack/client.node");
+const base = process.env.VERIFY_BASE_URL || "http://localhost:3000";
+const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
+const auth = getAuth(initializeApp({ credential: cert({ projectId: process.env.FIREBASE_PROJECT_ID, clientEmail: process.env.FIREBASE_CLIENT_EMAIL, privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n") }) }));
+const suffix = randomBytes(5).toString("hex");
+const employeeId = randomUUID(), otherEmployeeId = randomUUID(), userId = randomUUID(), otherUserId = randomUUID();
+let uid, cookie, org, dept;
+const customerId = randomUUID();
+
+const check = async (q) => { const r = await q; assert.ifError(r.error); return r.data; };
+const request = (path, options = {}) => fetch(`${base}${path}`, { ...options, headers: { cookie: cookie || "", ...options.headers } });
+async function action(name, path, fields, stateful = true) {
+  await (await request(path)).text();
+  const manifest = JSON.parse(await readFile(new URL("../.next/dev/server/server-reference-manifest.json", import.meta.url), "utf8"));
+  const entry = Object.entries(manifest.node).find(([, value]) => value.exportedName === name); assert(entry, name);
+  const form = new FormData(); for (const [key, value] of Object.entries(fields)) form.set(key, String(value));
+  const response = await request(path, { method: "POST", redirect: "manual", headers: { origin: base, "next-action": entry[0], accept: "text/x-component" }, body: await encodeReply(stateful ? [{}, form] : [form]) });
+  const text = await response.text(); assert(response.status < 400, `${name}: ${response.status} ${text.slice(0, 300)}`);
+  console.log(`action verified: ${name}`);
+  return text;
+}
+try {
+  org = (await check(db.from("organizations").select("id").eq("name", "Alpha Communications").single())).id;
+  dept = (await check(db.from("departments").select("id").eq("organization_id", org).eq("name", "営業").single())).id;
+  uid = (await auth.createUser({ email: `todo-${suffix}@example.com` })).uid;
+  await check(db.from("employees").insert({ id: employeeId, organization_id: org, primary_department_id: dept, name: `ToDo検証-${suffix}`, status: "active" }));
+  await check(db.from("employees").insert({ id: otherEmployeeId, organization_id: org, primary_department_id: dept, name: `ToDo別担当検証-${suffix}`, status: "inactive" }));
+  await check(db.from("app_users").insert([{ id: userId, firebase_uid: uid, employee_id: employeeId, organization_id: org, email: `todo-${suffix}@example.com`, role: "sales_rep", status: "active" }, { id: otherUserId, employee_id: otherEmployeeId, organization_id: org, email: `todo-other-${suffix}@example.com`, role: "sales_rep", status: "inactive" }]));
+  await check(db.from("app_user_departments").insert({ app_user_id: userId, department_id: dept, is_primary: true }));
+  const customToken = await auth.createCustomToken(uid);
+  const identity = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${process.env.NEXT_PUBLIC_FIREBASE_API_KEY}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: customToken, returnSecureToken: true }) });
+  const { idToken } = await identity.json(); assert(idToken);
+  const login = await fetch(`${base}/api/auth/session`, { method: "POST", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify({ idToken }) }); assert.equal(login.status, 200);
+  cookie = login.headers.getSetCookie().map(c => c.split(";")[0]).join("; ");
+ const axcel=(await check(db.from('departments').select('id').eq('organization_id',org).eq('name','AXCEL').single())).id;
+ await check(db.from('app_users').update({status:'active'}).eq('id',otherUserId));await check(db.from('app_user_departments').insert({app_user_id:otherUserId,department_id:axcel,is_primary:true}));
+ const form={reportDate:'2026-11-09',newCalls:'50',newAppointments:'3',userCalls:'20',userAppointments:'1',outsideMinutes:'150'};
+ assert((await action('saveDailyReport','/',form)).includes('個人日報を保存'));
+ assert((await action('saveDailyReport','/',{...form,newCalls:'60'})).includes('個人日報を保存'));
+ await action('saveDailyReport','/',{...form,reportDate:'2026-11-07',newCalls:'7',userCalls:'3',newAppointments:'1',userAppointments:'0',outsideMinutes:'60'});
+ let day=await (await request('/api/daily-report?date=2026-11-09')).json();assert.equal(day.report.new_calls,60);assert.equal(day.report.calls,80);assert.equal(day.report.user_appointments,1);assert.equal(day.report.outside_minutes,150);
+ const past=await (await request(`/api/daily-report?date=2026-11-07&employeeId=${otherEmployeeId}`)).json();assert.equal(past.report.employee_id,employeeId);assert.equal(past.report.new_calls,7);
+ assert.equal((await request('/api/daily-report?date=wrong')).status,400);
+ assert.equal((await check(db.from('personal_daily_reports').select('id').eq('employee_id',employeeId))).length,2);
+ assert((await action('saveDailyReport','/',{...form,outsideMinutes:'1441'})).includes('確認してください'));
+ await check(db.from('app_users').update({role:'department_admin_sales_rep'}).eq('id',userId));
+ assert((await action('saveSalesGoal','/analysis',{employeeId,month:'2026-11',targetCount:'5',targetGrossProfit:'0'})).includes('受注目標を保存'));
+ await check(db.from('app_users').update({role:'sales_rep'}).eq('id',userId));
+ await check(db.from('customers').insert({id:customerId,organization_id:org,department_id:dept,name:`日報検証客先-${suffix}`}));
+ const firstCase=randomUUID(),secondCase=randomUUID();
+ const row=(date,category,type,customerType,outcome,caseId,owner=employeeId,department=dept,status='completed')=>({organization_id:org,department_id:department,employee_id:owner,customer_id:customerId,title:'日報自動集計の検証',activity_type:type,status,starts_at:`${date}T10:00:00+09:00`,ends_at:`${date}T11:00:00+09:00`,schedule_details:{category,customerType,opportunityId:caseId},common_report:{registrationType:'actual',activityStatus:outcome,product:caseId===firstCase?'UTM':'複合機',orderDate:outcome==='受注'?date:'',orderAmount:outcome==='受注'?'100000':'',orderGrossProfit:outcome==='受注'?'30000':''}});
+ await check(db.from('activities').insert([row('2025-11-01','sales','visit','新規','失注',firstCase),row('2026-11-01','sales','visit','新規','提案中',firstCase),row('2026-11-02','sales','online','GUP','提案中',secondCase),row('2026-11-03','sales','visit','GUP','受注',secondCase),row('2026-11-04','accompaniment','visit','新規','提案中',randomUUID()),...['documents','construction','survey','follow_up'].map(type=>row('2026-11-05','non_sales',type,'新規','提案中',randomUUID())),row('2026-11-06','sales','visit','新規','提案中',randomUUID(),employeeId,dept,'cancelled'),row('2026-11-07','sales','visit','新規','提案中',randomUUID(),employeeId,dept,'scheduled'),row('2026-11-01','sales','visit','他商材','提案中',randomUUID(),otherEmployeeId,axcel)]));
+ const scope={db,organizationId:org,employeeId,userId,departmentIds:[dept],role:'sales_rep'};
+ const data=await analyticsData(scope,'2026-11',[employeeId],{allActivities:true});const numbers=summarizeDailyNumbers(data.activities,data.reports,'2026-10-21','2026-11-20');
+ assert.equal(numbers.newCalls,67);assert.equal(numbers.userCalls,23);assert.equal(numbers.newAppointments,4);assert.equal(numbers.userAppointments,1);assert.equal(numbers.outsideMinutes,210);assert.equal(numbers.field.新規.appointments,0);assert.equal(numbers.field.新規.revisits,1);assert.equal(numbers.field.GUP.appointments,1);assert.equal(numbers.field.GUP.revisits,1);assert.equal(numbers.contracts,1);assert.equal(numbers.otherActivities,5);
+ const metrics=summarizeMetrics(data.activities,data.reports,data.goals,'2026-11');assert.equal(metrics.newCalls,67);
+ const html=await (await request('/?dailyMonth=2026-11')).text();assert(html.includes('今日の日報'));assert(html.includes('テレアポ 新規：コール件数'));assert(html.includes('処理／飛込／対応／下見／同行'));assert(!html.includes('ToDo別担当検証'));
+ await check(db.from('app_users').update({role:'department_admin'}).eq('id',userId));assert.equal((await analyticsData({...scope,role:'department_admin'},'2026-11',[otherEmployeeId],{allActivities:true})).activities.length,0);
+ await check(db.from('app_users').update({role:'organization_admin'}).eq('id',userId));
+ const group=await analyticsData({...scope,role:'organization_admin'},'2026-11',[employeeId,otherEmployeeId],{allActivities:true});assert.equal(summarizeDailyNumbers(group.activities,group.reports,'2026-10-21','2026-11-20').field.他商材.appointments,1);
+ assert((await action('saveDailyReport','/',form)).includes('営業担当本人'));
+ console.log('daily dashboard: four telemarketing inputs, date reload, upsert, time validation, field visits, other activity totals, contracts, goals and role scopes verified');
+}finally{
+ await check(db.from('activities').delete().eq('customer_id',customerId));await check(db.from('customers').delete().eq('id',customerId));await check(db.from('personal_daily_reports').delete().in('employee_id',[employeeId,otherEmployeeId]));await check(db.from('monthly_sales_goals').delete().in('employee_id',[employeeId,otherEmployeeId]));await check(db.from('app_users').delete().in('id',[userId,otherUserId]));await check(db.from('employees').delete().in('id',[employeeId,otherEmployeeId]));if(uid)await auth.deleteUser(uid);console.log('temporary daily-dashboard test records removed');
+}

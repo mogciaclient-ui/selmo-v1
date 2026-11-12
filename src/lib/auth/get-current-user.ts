@@ -1,3 +1,5 @@
+import { canSwitchDevelopmentRole, DEVELOPMENT_ROLE_COOKIE, resolveDevelopmentRole } from "@/lib/auth/development-role";
+import { isDepartmentAdmin } from "@/lib/auth/roles";
 import "server-only";
 
 import { cookies } from "next/headers";
@@ -27,10 +29,15 @@ export const getCurrentUser = cache(async (): Promise<AuthContext | null> => {
   const primary = row.app_user_departments.toSorted((a, b) => Number(b.is_primary) - Number(a.is_primary))[0];
   const departmentRelation = primary?.departments;
   const department = Array.isArray(departmentRelation) ? departmentRelation[0] : departmentRelation;
-  const roleLabel = row.role === "organization_admin"
+  const canSwitchRole = canSwitchDevelopmentRole(row.firebase_uid, row.role);
+  const role = resolveDevelopmentRole(row.firebase_uid, row.role, (await cookies()).get(DEVELOPMENT_ROLE_COOKIE)?.value);
+  const departmentIds = canSwitchRole && role !== "organization_admin"
+    ? primary ? [primary.department_id] : []
+    : row.app_user_departments.map((item) => item.department_id);
+  const roleLabel = role === "organization_admin"
     ? "本部"
-    : row.role === "department_admin"
-      ? `${department?.name ?? "部門"}管理`
+    : isDepartmentAdmin(role)
+      ? `${department?.name ?? "部門"}管理${role === "department_admin_sales_rep" ? "・営業兼務" : ""}`
       : department?.name ?? "営業";
-  return { userId: row.id, firebaseUid: row.firebase_uid, organizationId: row.organization_id, employeeId: row.employee_id, email: row.email, displayName: employee?.name ?? row.email, role: row.role, status: row.status, departmentIds: row.app_user_departments.map((item) => item.department_id), departmentName: roleLabel, db };
+  return { userId: row.id, firebaseUid: row.firebase_uid, organizationId: row.organization_id, employeeId: row.employee_id, email: row.email, displayName: employee?.name ?? row.email, role, canSwitchRole, status: row.status, departmentIds, departmentName: roleLabel, db };
 });

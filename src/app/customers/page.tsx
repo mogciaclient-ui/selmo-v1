@@ -1,9 +1,12 @@
+import { isDepartmentAdmin } from "@/lib/auth/roles";
 import Link from "next/link";
 import { Building2, Download, Search, X } from "lucide-react";
 import { CustomerRegistrationDialog } from "@/components/customers/customer-registration-dialog";
 import { CustomerContactDialog, CustomerOpportunityDialog } from "@/components/customers/customer-row-dialogs";
 import { AppShell } from "@/components/layout/app-shell";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { isExcludedProduct } from "@/domain/products/defaults";
+import { SALES_ROLES } from "@/lib/auth/sales-roles";
 
 type SearchValues = Record<string, string | string[] | undefined>;
 type CustomerRow = {
@@ -19,9 +22,9 @@ type OpportunityRow = {
 };
 type ActivityRow = { customer_id: string | null; starts_at: string };
 
-const products = ["ホームテレホン", "ビジネスフォン", "FAX", "複合機", "UTM", "サーバー", "ネットワーク商材", "防犯カメラ", "AXCEL", "コラボ", "LED", "UPS・SSW・ルーター", "その他"];
+const products = ["ホームテレホン", "ビジネスフォン", "FAX", "複合機", "UTM", "サーバー", "ネットワーク商材", "防犯カメラ", "コラボ", "LED", "UPS・SSW・ルーター", "その他"];
 const statuses = [["open", "提案中"], ["won", "受注"], ["lost", "失注"], ["on_hold", "保留中"], ["undecided", "未定案"]] as const;
-const salesProcesses = ["IT営業活動", "IT同行活動", "AXCEL同行活動", "CS営業活動", "CS営業外活動", "アルファサポート", "AXCEL", "書類不備", "工事立会", "納品", "フォロー"];
+const salesProcesses = ["IT営業活動", "IT同行活動", "CS営業活動", "CS営業外活動", "アルファサポート", "書類不備", "工事立会", "納品", "フォロー"];
 
 export default async function CustomersPage({ searchParams }: { searchParams: Promise<SearchValues> }) {
   const [values, context] = await Promise.all([searchParams, requireAuth()]);
@@ -32,23 +35,23 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   const customerQueries = Array.from({ length: 5 }, (_, page) => context.db.from("customers").select("id,external_id,department_id,name,phone,address,notes,assigned_employee_id,updated_at,registration_details").eq("organization_id", context.organizationId).order("updated_at", { ascending: false }).range(page * 1000, page * 1000 + 999));
   let opportunityQuery = context.db.from("opportunities").select("customer_id,branch_name,customer_contact,customer_type,product_name,products,status,sales_type,sales_process,department_id,employee_id").eq("organization_id", context.organizationId).limit(5000);
   let activityQuery = context.db.from("activities").select("customer_id,starts_at,department_id,employee_id").eq("organization_id", context.organizationId).limit(5000);
-  const departmentQuery = context.db.from("departments").select("id,name").eq("organization_id", context.organizationId).order("name");
+  const departmentQuery = context.db.from("departments").select("id,name").eq("organization_id", context.organizationId).not("name", "ilike", "%axcel%").order("name");
   if (context.role === "sales_rep") {
     opportunityQuery = opportunityQuery.eq("employee_id", context.employeeId);
     activityQuery = activityQuery.eq("employee_id", context.employeeId);
-  } else if (context.role === "department_admin") {
+  } else if (isDepartmentAdmin(context.role)) {
     opportunityQuery = opportunityQuery.in("department_id", context.departmentIds);
     activityQuery = activityQuery.in("department_id", context.departmentIds);
   }
   const [customerPageResults, { data: rawOpportunities }, { data: rawActivities }, { data: departments }, { data: appUsers }, { data: productRows }] = await Promise.all([
     Promise.all(customerQueries), opportunityQuery, activityQuery, departmentQuery,
-    context.db.from("app_users").select("employee_id,employees(name),app_user_departments(department_id,departments(name))").eq("organization_id", context.organizationId).eq("status", "active"),
+    context.db.from("app_users").select("employee_id,employees(name),app_user_departments(department_id,departments(name))").eq("organization_id", context.organizationId).eq("status", "active").in("role", SALES_ROLES),
     context.db.from("products").select("name").eq("organization_id", context.organizationId).eq("status", "active").order("name"),
   ]);
   const rawCustomers = customerPageResults.flatMap((result) => result.data ?? []);
   const error = customerPageResults.find((result) => result.error)?.error ?? null;
   const members = ((appUsers ?? []) as unknown as AppUserRow[]).map((user) => ({ id: user.employee_id, name: first(user.employees)?.name ?? "—", department: first(user.app_user_departments[0]?.departments)?.name ?? "所属未設定", departmentIds: user.app_user_departments.map((item) => item.department_id) }));
-  const productNames = (productRows ?? []).map((product) => product.name);
+  const productNames = (productRows ?? []).map((product) => product.name).filter((name) => !isExcludedProduct(name));
   const customerRows = (rawCustomers ?? []) as CustomerRow[];
   const opportunityRows = (rawOpportunities ?? []) as OpportunityRow[];
   const activityRows = (rawActivities ?? []) as ActivityRow[];

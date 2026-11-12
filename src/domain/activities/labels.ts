@@ -1,4 +1,7 @@
+import { scheduleTypeLabels } from "../schedules/rules.ts";
+
 const activityTypes: Record<string, string> = {
+  ...scheduleTypeLabels,
   visit: "訪問",
   online: "オンライン",
   telephone: "電話・テレアポ",

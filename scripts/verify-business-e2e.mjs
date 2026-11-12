@@ -26,7 +26,7 @@ try {
   if (!departmentId) throw new Error("管理者の所属部門がありません。");
   const scope = { organizationId: admin.organization_id, employeeId: admin.employee_id, role: admin.role, departmentIds: admin.app_user_departments.map((item) => item.department_id) };
   const customerRepository = createSupabaseCustomerRepository(db, scope);
-  const activityRepository = createSupabaseSalesActivityRepository(db, scope);
+  const activityRepository = createSupabaseSalesActivityRepository(db, { ...scope, role: "sales_rep" });
   const dashboardRepository = createSupabaseDashboardRepository(db, scope);
 
   await saveCustomer(customerRepository, { departmentId, name: customerName, phone: "03-0000-0000", address: "E2E住所", notes: "登録確認" });

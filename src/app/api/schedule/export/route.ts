@@ -1,27 +1,25 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
-import { activityStatusLabel, activityTypeLabel } from "@/domain/activities/labels";
-
-type Row = { title: string; activity_type: string; starts_at: string; ends_at: string; status: string; result: string | null; customers: { name: string } | { name: string }[] | null };
-
+import { createSupabaseDashboardRepository } from "@/infrastructure/supabase/dashboard-repository";
+import { completionLabel } from "@/domain/schedules/rules";
 export async function GET(request: NextRequest) {
   const context = await getCurrentUser();
   if (!context) return Response.json({ message: "ログインし直してください。" }, { status: 401 });
-  const start = request.nextUrl.searchParams.get("start"); const end = request.nextUrl.searchParams.get("end");
-  const departmentId = request.nextUrl.searchParams.get("departmentId"); const employeeId = request.nextUrl.searchParams.get("employeeId");
-  if (!start?.match(/^\d{4}-\d{2}-\d{2}$/) || !end?.match(/^\d{4}-\d{2}-\d{2}$/)) return Response.json({ message: "日付範囲が正しくありません。" }, { status: 400 });
-  const startDate = new Date(`${start}T00:00:00+09:00`); const endDate = new Date(`${end}T23:59:59+09:00`); const limit = new Date(startDate); limit.setMonth(limit.getMonth() + 3); limit.setDate(limit.getDate() + 1);
-  if (endDate < startDate || endDate >= limit) return Response.json({ message: "日付範囲は最大3か月までです。" }, { status: 400 });
-  let query = context.db.from("activities").select("title,activity_type,starts_at,ends_at,status,result,department_id,customers(name)").eq("organization_id", context.organizationId).gte("starts_at", startDate.toISOString()).lte("starts_at", endDate.toISOString()).order("starts_at");
-  if (context.role === "sales_rep") query = query.eq("employee_id", context.employeeId);
-  if (context.role === "department_admin") query = query.in("department_id", context.departmentIds);
-  if (departmentId && (context.role === "organization_admin" || context.departmentIds.includes(departmentId))) query = query.eq("department_id", departmentId);
-  if (employeeId && (context.role !== "sales_rep" || employeeId === context.employeeId)) query = query.eq("employee_id", employeeId);
-  const { data, error } = await query; if (error) return Response.json({ message: "スケジュールを取得できませんでした。" }, { status: 500 });
-  const rows = (data ?? []) as unknown as Row[];
-  const csv = [["日付", "開始", "終了", "顧客名", "予定名", "活動種別", "ステータス", "活動結果"], ...rows.map((row) => { const relation = row.customers; const customer = Array.isArray(relation) ? relation[0]?.name : relation?.name; return [date(row.starts_at), time(row.starts_at), time(row.ends_at), customer ?? "", row.title, activityTypeLabel(row.activity_type), activityStatusLabel(row.status), row.result ?? ""]; })].map((row) => row.map(escapeCsv).join(",")).join("\r\n");
-  return new Response(`\uFEFF${csv}`, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="schedule_${start}_${end}.csv"` } });
+  const params = request.nextUrl.searchParams;
+  const parsed = z.object({ start: z.iso.date(), end: z.iso.date(), employeeIds: z.array(z.uuid()), departmentId: z.union([z.uuid(), z.literal("")]), employeeId: z.union([z.uuid(), z.literal("")]) }).safeParse({ start: params.get("start"), end: params.get("end"), employeeIds: params.getAll("employeeIds"), departmentId: params.get("departmentId") ?? "", employeeId: params.get("employeeId") ?? "" });
+  if (!parsed.success) return Response.json({ message: "日付または表示対象が正しくありません。" }, { status: 400 });
+  const { start, end, employeeIds, employeeId, departmentId } = parsed.data;
+  const startDate = new Date(`${start}T00:00:00+09:00`), endDate = new Date(`${end}T00:00:00+09:00`), limit = new Date(startDate);
+  limit.setUTCMonth(limit.getUTCMonth() + 3);
+  if (endDate < startDate || endDate > limit) return Response.json({ message: "日付範囲は最大3か月までです。" }, { status: 400 });
+  endDate.setUTCDate(endDate.getUTCDate() + 1);
+  try {
+    const all = await createSupabaseDashboardRepository(context.db, context, { teamCalendar: true }).findActivitiesBetween(startDate.toISOString(), endDate.toISOString());
+    const rows = all.filter(row => (!departmentId || row.departmentId === departmentId) && (!employeeId || row.employeeId === employeeId) && (params.get("selectionProvided") !== "1" || employeeIds.includes(row.employeeId)));
+    const csv = [["日付", "開始", "終了", "顧客名", "エリア", "顧客種別", "状態"], ...rows.map(row => [date(row.startsAt), time(row.startsAt), time(row.endsAt), row.customerName ?? "", String(row.scheduleDetails?.area ?? row.scheduleDetails?.location ?? ""), String(row.scheduleDetails?.customerType ?? ""), completionLabel(row)])].map(row => row.map(cell => `"${cell.replaceAll('"', '""')}"`).join(",")).join("\r\n");
+    return new Response(`\uFEFF${csv}`, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="schedule_${start}_${end}.csv"` } });
+  } catch (error) { console.error("[schedule-export] failed", error); return Response.json({ message: "CSVを取得できませんでした。" }, { status: 500 }); }
 }
-function escapeCsv(value: string) { return `"${value.replaceAll('"', '""')}"`; }
-function date(value: string) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value)); }
-function time(value: string) { return new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)); }
+function date(value: string) { return new Date(value).toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }); }
+function time(value: string) { return new Date(value).toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit" }); }

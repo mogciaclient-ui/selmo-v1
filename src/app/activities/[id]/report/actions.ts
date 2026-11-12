@@ -1,5 +1,10 @@
 "use server";
 
+import { findProductOptions } from "@/infrastructure/supabase/product-options-repository";
+import { salesManualContext } from "@/lib/activities/sales-manuals";
+import { missingReportFields } from "@/domain/schedules/report-requirements";
+import { canActAsSalesRep } from "@/lib/auth/roles";
+
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
@@ -14,9 +19,9 @@ const text = (max = 500) => z.string().trim().max(max);
 const optionalText = (max = 500) => text(max).optional().default("");
 const reportSchema = z.object({
   id: z.uuid(), activityOwnerId: z.uuid(), registrationType: z.enum(["actual", "planned"]), salesType: text(100), salesProcess: text(100),
-  activityStatus: text(100), activityDate: text(10), product: text(200), customerContact: optionalText(200), progressStep: optionalText(200),
+  activityStatus: text(100), activityDate: z.iso.date(), product: text(200), customerContact: optionalText(200), progressStep: optionalText(200),
   confidence: text(100), collaborationProposal: optionalText(100), electricityProposal: optionalText(100), dealChange: optionalText(100),
-  axcelProposal: optionalText(100), axcelProposalDetail: optionalText(200), customerAttribute: optionalText(200),
+  customerAttribute: optionalText(200),
   startTime: text(5), endTime: text(5), details: optionalText(5000), visitCount: optionalText(100),
   appointmentType: optionalText(200), negotiator: optionalText(200), negotiatorTitle: optionalText(200), dealStage: optionalText(100), vendor: optionalText(200),
   model: optionalText(200), proposedModel: optionalText(200), currentLeaseCompany: optionalText(200), leaseCompany: optionalText(200),
@@ -28,33 +33,34 @@ const reportSchema = z.object({
 export async function saveDetailedActivityReport(_: DetailedReportState, formData: FormData): Promise<DetailedReportState> {
   const context = await getCurrentUser();
   if (!context) return { message: "ログインし直してください。" };
-  if (context.role !== "sales_rep") return { message: "管理者アカウントは閲覧専用です。" };
+  if (!canActAsSalesRep(context.role)) return { message: "管理者アカウントは閲覧専用です。" };
   const parsed = reportSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "入力内容を確認してください。" };
   const input = parsed.data;
-  const processBySalesType: Record<string, string[]> = { "IT営業活動": ["IT営業活動"], "IT営業外活動": ["書類不備", "工事立会", "納品", "フォロー"], "IT同行活動": ["IT同行活動"], "CS営業活動": ["CS営業活動"], "CS営業外活動": ["CS営業外活動"], "アルファサポート": ["アルファサポート"], "AXCEL定期訪問": ["AXCEL"], "AXCEL不定期訪問": ["AXCEL"] };
+  const missingFields = missingReportFields(formData, input.salesType, input.activityStatus, input.registrationType === "actual");
+  if (missingFields.length) return { message: "活動詳細の表示項目はすべて必須です。該当しない項目も「該当なし」を選択・入力してください。" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.activityDate) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.endTime)) return { message: "活動日時を確認してください。" };
+
+  const processBySalesType: Record<string, string[]> = { "IT営業活動": ["IT営業活動"], "IT営業外活動": ["書類不備", "工事立会", "工事立ち会い", "下見", "納品", "フォロー"], "IT同行活動": ["IT同行活動"], "CS営業活動": ["CS営業活動"], "CS営業外活動": ["CS営業外活動"], "アルファサポート": ["アルファサポート"] };
   if (!processBySalesType[input.salesType]?.includes(input.salesProcess)) return { message: "営業タイプと営業プロセスの組み合わせを確認してください。" };
-  if (!["提案中", "受注", "失注", "保留中"].includes(input.activityStatus)) return { message: "ステータスを確認してください。" };
+  if (!["提案中", "受注", "失注"].includes(input.activityStatus)) return { message: "ステータスを確認してください。" };
   const value = (name: string) => String(formData.get(name) ?? "").trim();
   const list = (name: string) => formData.getAll(name).flatMap((item) => String(item).split(/[、,]/)).map((item) => item.trim()).filter(Boolean);
   const missing = (fields: Array<[string, string]>) => fields.find(([name]) => !value(name));
   const requiredCommon: Array<[string, string]> = [["activityDate", "活動日"], ["product", "商材"], ["confidence", "確度"], ["startTime", "活動開始時間"], ["endTime", "活動終了時間"]];
-  if (input.salesType !== "アルファサポート") requiredCommon.push(["contactRole", "面談者（区分）"]);
   if (input.activityStatus === "受注") requiredCommon.push(["orderAmount", "受注額"], ["orderDate", "受注日"]);
   if (input.salesType === "IT営業活動" && input.activityStatus === "提案中") requiredCommon.push(["nextVisitDate", "次回訪問予定日"], ["nextActionDetails", "次回アクション内容"]);
-  if (["IT営業外活動", "IT同行活動", "CS営業活動", "CS営業外活動", "AXCEL定期訪問", "AXCEL不定期訪問"].includes(input.salesType)) requiredCommon.push(["stayMinutes", "滞在時間"]);
-  if (["AXCEL定期訪問", "AXCEL不定期訪問"].includes(input.salesType)) requiredCommon.push(["travelMinutes", "移動時間"]);
+  if (["IT営業外活動", "IT同行活動", "CS営業活動", "CS営業外活動"].includes(input.salesType)) requiredCommon.push(["stayMinutes", "滞在時間"]);
   const missingField = missing(requiredCommon);
   if (missingField) return { message: `${missingField[1]}を入力してください。` };
   if (input.salesType === "IT営業活動" && !list("proposedProducts").length) return { message: "提案商材を1つ以上選択してください。" };
-  if (input.salesType === "AXCEL定期訪問" && !list("effectMeasurementItems").length) return { message: "効果測定項目を1つ以上選択してください。" };
   let activityQuery = context.db.from("activities").select("id,department_id,employee_id,customer_id,title,schedule_details,common_report").eq("id", input.id).eq("organization_id", context.organizationId);
   activityQuery = activityQuery.eq("employee_id", context.employeeId);
   const { data: activity, error: lookupError } = await activityQuery.maybeSingle();
   if (lookupError || !activity) return { message: "この活動を登録する権限がありません。" };
   if (input.audioPath && !input.audioPath.startsWith(`${context.organizationId}/activities/${input.id}/`)) return { message: "アップロードした音声の保存先が不正です。" };
 
-  const attendeeEmployeeIds = formData.getAll("attendeeEmployeeIds").map(String).filter(Boolean);
+  const attendeeEmployeeIds: string[] = [];
   const assigneeKeys = [String(formData.get("appointmentOwnerId") ?? ""), String(formData.get("fieldOwnerId") ?? ""), String(formData.get("companionOwnerId") ?? "")].filter(Boolean);
   const relatedEmployeeIds = [...new Set([input.activityOwnerId, ...attendeeEmployeeIds, ...assigneeKeys.filter((id) => !id.startsWith("special:"))])];
   const employeeQuery = context.db.from("employees").select("id,name,primary_department_id").eq("organization_id", context.organizationId).eq("status", "active").in("id", relatedEmployeeIds);
@@ -63,7 +69,7 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
   const employeeNames = new Map((employeeRows ?? []).map((employee) => [employee.id, employee.name]));
   if (!employeeNames.has(input.activityOwnerId)) return { message: "活動担当者を選び直してください。" };
   if (relatedEmployeeIds.some((id) => !employeeNames.has(id))) return { message: "選択した社内担当者を確認してください。" };
-  const specialNames = new Map([["special:external", "外部"], ["special:ntt", "NTT"], ["special:manufacturer", "メーカー"]]);
+  const specialNames = new Map([["special:none", "該当なし"], ["special:external", "外部"], ["special:ntt", "NTT"], ["special:manufacturer", "メーカー"]]);
   if (assigneeKeys.some((id) => !employeeNames.has(id) && !specialNames.has(id))) return { message: "選択した担当者を確認してください。" };
   if (input.activityOwnerId !== context.employeeId) return { message: "活動担当者を変更する権限がありません。" };
 
@@ -80,20 +86,25 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
   const previousCommon = (activity.common_report ?? {}) as Record<string, unknown>;
   let products: Array<{ name: string; amount: string; quantity: string; main: boolean }> = [];
   try { products = z.array(z.object({ name: z.string().min(1).max(200), amount: z.string().max(20), quantity: z.string().max(20), main: z.boolean() })).max(20).parse(JSON.parse(value("productsJson") || "[]")); } catch { return { message: "商材の入力内容を確認してください。" }; }
-  if (!products.length || !products.some((product) => product.main)) return { message: "メイン商材を選択してください。" };
+  if (!products.length || products.filter((product) => product.main).length !== 1 || products.find(product => product.main)?.name !== input.product) return { message: "メイン商材を選択してください。" };
+  const masterProducts = await findProductOptions(context.db, context.organizationId).catch(() => null);
+  if (!masterProducts) return { message: "商材マスタを取得できませんでした。" };
+  const historicalProducts = [previousCommon.product, activity.schedule_details?.product, ...(Array.isArray(previousCommon.products) ? previousCommon.products.map((p: { name?: string }) => p.name) : [])].filter((name): name is string => typeof name === "string" && Boolean(name));
+  const allowedProducts = new Set([...masterProducts, ...historicalProducts]);
+  if (products.some(product => !allowedProducts.has(product.name)) || list("proposedProducts").some(name => !allowedProducts.has(name))) return { message: "商材マスタから有効な商材を選択してください。" };
+  const grossProfit = value("orderGrossProfit");
+  if (grossProfit && (!Number.isFinite(Number(grossProfit)) || Number(grossProfit) < 0)) return { message: "受注粗利は0以上の金額を入力してください。" };
   const common = {
     ...previousCommon,
     registrationType: input.registrationType, salesType: input.salesType, salesProcess: input.salesProcess, activityStatus: input.activityStatus,
-    activityDate: input.activityDate, product: input.product, products, customerContact: input.customerContact, progressStep: input.progressStep,
-    attendeeEmployeeIds, attendees: attendeeEmployeeIds.map((id) => employeeNames.get(id)).filter(Boolean),
+    activityDate: input.activityDate, product: input.product, products, progressStep: input.progressStep,
     confidence: input.confidence, collaborationProposal: input.collaborationProposal, electricityProposal: input.electricityProposal,
     dealChange: input.dealChange, proposedProducts: list("proposedProducts"), contactRoles: list("contactRoles"),
-    axcelProposal: input.axcelProposal, axcelProposalDetail: input.axcelProposalDetail, axcelPresentation: list("axcelPresentation"),
     customerAttribute: input.customerAttribute,
-    contactRole: value("contactRole"), activityLocation: value("activityLocation"), priority: value("priority"), nextVisitDate: value("nextVisitDate"),
-    expectedOrderYear: value("expectedOrderYear"), expectedOrderMonth: value("expectedOrderMonth"), orderAmount: value("orderAmount"), orderQuantity: value("orderQuantity"), orderDate: value("orderDate"),
+    activityLocation: value("activityLocation"), priority: value("priority"), nextVisitDate: value("nextVisitDate"),
+    expectedOrderYear: value("expectedOrderYear"), expectedOrderMonth: value("expectedOrderMonth"), orderAmount: value("orderAmount"), orderGrossProfit: formData.has("orderGrossProfit") ? grossProfit : previousCommon.orderGrossProfit ?? "", orderQuantity: value("orderQuantity"), orderDate: value("orderDate"),
     lossReason: value("lossReason"), holdReason: value("holdReason"), commonNotes: value("commonNotes"), nextActionDetails: value("nextActionDetails"), followUpVisitDate: value("followUpVisitDate"),
-    oaOrderReason: value("oaOrderReason"), axcelOrderReason: value("axcelOrderReason"), oaLossDetail: value("oaLossDetail"), axcelLossDetail: value("axcelLossDetail"),
+    oaOrderReason: value("oaOrderReason"), oaLossDetail: value("oaLossDetail"),
     speakerSeparationStatus: analysisRequested ? "pending" : String(previousCommon.speakerSeparationStatus ?? ""),
     aiAnalysisStatus: analysisRequested ? "waiting_for_speaker_separation" : String(previousCommon.aiAnalysisStatus ?? ""),
   };
@@ -111,7 +122,7 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
     stayMinutes: value("stayMinutes"), plannedStayMinutes: value("plannedStayMinutes"), travelMinutes: value("travelMinutes"), returnTime: value("returnTime"),
     csCustomerRank: value("csCustomerRank"), itCustomerRank: value("itCustomerRank"), respondent: value("respondent"), vehicle: value("vehicle"), csActivityContent: value("csActivityContent"), episode: value("episode"),
     csNonSalesActivity: value("csNonSalesActivity"), constructionContent: value("constructionContent"), constructionProgress: value("constructionProgress"),
-    homeworkAcquired: value("homeworkAcquired"), homeworkDetails: value("homeworkDetails"), nextAppointment: value("nextAppointment"), effectMeasurementItems: list("effectMeasurementItems"), referral: value("referral"), remote: value("remote"), axcelIrregularActivity: value("axcelIrregularActivity"),
+    homeworkAcquired: value("homeworkAcquired"), homeworkDetails: value("homeworkDetails"), nextAppointment: value("nextAppointment"), effectMeasurementItems: list("effectMeasurementItems"), referral: value("referral"), remote: value("remote"),
     ...(analysisRequested ? { aiTranscript: input.aiTranscript, audioPath: input.audioPath, aiAnalysisRequested: true, speakerSeparationStatus: "pending", aiAnalysisStatus: "waiting_for_speaker_separation" } : {}),
   };
   const now = new Date().toISOString();
@@ -135,7 +146,7 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
 
   const scheduleDetails = (activity.schedule_details ?? {}) as Record<string, unknown>;
   try {
-    await syncOpportunityFromActivity(context.db, {
+    const syncedOpportunityId = input.registrationType === "actual" ? await syncOpportunityFromActivity(context.db, {
       organizationId: context.organizationId,
       activityId: input.id,
       departmentId: activity.department_id,
@@ -151,7 +162,7 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
       progressStep: input.progressStep || String(scheduleDetails.progressStep ?? ""),
       activityStatus: input.activityStatus,
       confidence: input.confidence,
-    });
+    }) : String(scheduleDetails.opportunityId ?? "");
     const nextVisitDate = value("nextVisitDate") || value("followUpVisitDate");
     await syncNextVisitFromReport(context.db, {
       organizationId: context.organizationId,
@@ -161,12 +172,13 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
       employeeId: input.activityOwnerId,
       nextVisitDate,
       title: value("nextActionDetails") || `${String(scheduleDetails.opportunityName ?? activity.title)} 次回訪問`,
-      opportunityId: String(scheduleDetails.opportunityId ?? ""),
+      opportunityId: syncedOpportunityId ?? "",
       opportunityName: String(scheduleDetails.opportunityName ?? ""),
       salesType: input.salesType || String(scheduleDetails.salesType ?? ""),
       salesProcess: input.salesProcess || String(scheduleDetails.salesProcess ?? ""),
       progressStep: input.progressStep || String(scheduleDetails.progressStep ?? ""),
       notes: value("nextActionDetails"),
+      product: input.product, customerType: String(scheduleDetails.customerType ?? ""), area: String(scheduleDetails.area ?? ""),
     });
   } catch (syncError) {
     console.error("[activity-report] opportunity sync failed", { activityId: input.id, error: syncError });
@@ -187,7 +199,7 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
       message = "活動を保存しました。音声は自動で分析され、完了後にカレンダーから確認できます。";
     } else {
       try {
-        const { model, result } = await analyzeSalesTranscript(input.aiTranscript);
+        const { model, result } = await analyzeSalesTranscript(input.aiTranscript, await salesManualContext(context.db, context.organizationId, activity.department_id));
         await context.db.from("activity_ai_analyses").update({
           status: "completed", separated_transcript: result.dialogue, analysis: result,
           model, error_message: null, updated_at: new Date().toISOString(),
@@ -205,6 +217,7 @@ export async function saveDetailedActivityReport(_: DetailedReportState, formDat
       }
     }
   }
+  revalidatePath("/targets");
   revalidatePath("/"); revalidatePath("/results"); revalidatePath("/customers"); revalidatePath("/opportunities"); revalidatePath(`/activities/${input.id}/report`);
   revalidatePath("/analysis");
   return { success: true, message };

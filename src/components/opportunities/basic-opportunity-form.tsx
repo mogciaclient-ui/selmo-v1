@@ -17,7 +17,7 @@ export function BasicOpportunityForm({ customer, contacts, members, products, co
       <Select name="customerContact" label="顧客担当者" options={contacts.map((value) => [value, value])} empty="担当者を選択する"/><Select name="employeeId" label="主営業担当*" required options={members.map((value) => [value.id, `${value.department}｜${value.name}`])}/>
       <Select name="teamVisibility" label="他チームへの案件公開" options={[["organization","公開"],["private","非公開"]]}/><label className="text-sm font-semibold sm:col-span-2">備考<textarea name="notes" rows={4} className="mt-2 w-full rounded-xl border border-slate-200 p-3 font-normal outline-none focus:border-amber-500"/></label>
     </div></section>
-    <section className="border-t border-slate-200 pt-6"><Select name="status" label="案件状態" options={[["open","継続中"],["won","終了"],["on_hold","保留"],["lost","中止"]]}/></section>
+    <section className="border-t border-slate-200 pt-6"><Select name="status" label="案件状態" options={[["open","△ 検討中"],["won","〇 受注"],["lost","✕ 失注"]]}/></section>
     {state.message && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{state.message}</p>}
     <div className="flex justify-end"><button disabled={pending} className="flex items-center gap-2 rounded-xl bg-[#f2c94c] px-6 py-2.5 text-sm font-bold disabled:opacity-50">{pending && <LoaderCircle size={17} className="animate-spin"/>}{pending ? "登録中" : "入力内容を確認する"}</button></div>
   </form>;

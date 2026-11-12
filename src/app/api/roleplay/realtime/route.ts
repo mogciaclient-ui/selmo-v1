@@ -41,11 +41,21 @@ export async function POST(request: Request) {
 採点基準（顧客役として、この行動を営業担当者から引き出せるように応答する。ただし基準自体は口にしない）: ${scenario.scoringCriteria || "指定なし"}
 追加条件:
 ${customConditions}`,
-    audio: { input: { transcription: { model: "gpt-4o-mini-transcribe", language: "ja" }, turn_detection: { type: "semantic_vad" } }, output: { voice: "marin" } },
+    audio: { input: { transcription: { model: "gpt-4o-mini-transcribe", language: "ja" }, noise_reduction: { type: "far_field" }, turn_detection: { type: "server_vad", threshold: 0.35, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: true, interrupt_response: true } }, output: { voice: "marin" } },
   };
   const form = new FormData(); form.set("sdp", parsed.data.sdp); form.set("session", JSON.stringify(session));
-  const response = await fetch("https://api.openai.com/v1/realtime/calls", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "OpenAI-Safety-Identifier": createHash("sha256").update(context.userId).digest("hex") }, body: form });
-  const body = await response.text();
-  if (!response.ok) return NextResponse.json({ message: "音声AIへ接続できませんでした。", detail: body.slice(0, 500) }, { status: response.status });
-  return new Response(body, { status: 200, headers: { "Content-Type": "application/sdp" } });
+  try {
+  const response = await fetch("https://api.openai.com/v1/realtime/calls", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "OpenAI-Safety-Identifier": createHash("sha256").update(context.userId).digest("hex") }, body: form, signal: AbortSignal.timeout(25_000) });
+    if (!response.ok) {
+      console.error("[roleplay-realtime] OpenAI request failed", { status: response.status, requestId: response.headers.get("x-request-id") });
+      const message = response.status === 401 || response.status === 403
+        ? "音声AIサービスの認証に失敗しました。管理者に連絡してください。"
+        : "音声AIへ接続できませんでした。時間をおいて再接続してください。";
+      return NextResponse.json({ message }, { status: response.status });
+    }
+    return new Response(await response.text(), { status: 200, headers: { "Content-Type": "application/sdp" } });
+  } catch (error) {
+    console.error("[roleplay-realtime] connection failed", error instanceof Error ? error.name : "unknown");
+    return NextResponse.json({ message: "音声AIへの接続が完了しませんでした。再接続してください。" }, { status: 502 });
+  }
 }

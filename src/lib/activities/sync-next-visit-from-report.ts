@@ -14,6 +14,9 @@ type Input = {
   salesProcess?: string;
   progressStep?: string;
   notes?: string;
+  product?: string;
+  customerType?: string;
+  area?: string;
 };
 
 export async function syncNextVisitFromReport(db: SupabaseClient, input: Input) {
@@ -40,8 +43,11 @@ export async function syncNextVisitFromReport(db: SupabaseClient, input: Input) 
   const endsAt = new Date(`${input.nextVisitDate}T11:00:00+09:00`).toISOString();
   const scheduleDetails = {
     ...marker,
+    schemaVersion: "2",
     category: "sales",
-    locationType: "external",
+    product: input.product ?? "",
+    customerType: input.customerType ?? "",
+    area: input.area ?? "",
     opportunityId: input.opportunityId?.trim() ?? "",
     opportunityName: input.opportunityName?.trim() ?? "",
     salesType: input.salesType?.trim() ?? "",
@@ -53,7 +59,7 @@ export async function syncNextVisitFromReport(db: SupabaseClient, input: Input) 
     department_id: input.departmentId,
     customer_id: input.customerId,
     employee_id: input.employeeId,
-    title: input.title.trim() || "次回訪問",
+    title: "訪問",
     activity_type: "visit",
     starts_at: startsAt,
     ends_at: endsAt,

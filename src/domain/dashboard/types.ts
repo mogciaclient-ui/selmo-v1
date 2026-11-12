@@ -6,6 +6,8 @@ export type DashboardActivity = {
   endsAt: string;
   status: string;
   result: string | null;
+  completedAt?: string | null;
+  wasOverdue?: boolean;
   employeeId: string;
   departmentId: string;
   customerId: string | null;

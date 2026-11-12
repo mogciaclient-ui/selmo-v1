@@ -1,3 +1,4 @@
+import { canActAsSalesRep } from "../../lib/auth/roles.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SalesActivityRepository } from "@/application/ports/sales-activity-repository";
 import type { CustomerSearchResult } from "@/domain/customers/types";
@@ -14,7 +15,8 @@ type CustomerRow = {
 export function createSupabaseSalesActivityRepository(client: SupabaseClient, scope: RepositoryScope): SalesActivityRepository {
   return {
     async searchCustomers(query, limit) {
-      const request = client.from("customers").select("id,name,phone,address,department_id").eq("organization_id", scope.organizationId).or(`name.ilike.%${escapeFilter(query)}%,phone.ilike.%${escapeFilter(query)}%`).order("name").limit(Math.min(Math.max(limit, 1), 20));
+      let request = client.from("customers").select("id,name,phone,address,department_id").eq("organization_id", scope.organizationId).or(`name.ilike.%${escapeFilter(query)}%,phone.ilike.%${escapeFilter(query)}%`).order("name").limit(Math.min(Math.max(limit, 1), 20));
+      if (scope.role !== "organization_admin") request = request.in("department_id", scope.departmentIds);
       const { data, error } = await request;
       if (error) throw new Error("顧客を検索できませんでした。", { cause: error });
       return ((data ?? []) as CustomerRow[]).map((row): CustomerSearchResult => ({
@@ -57,6 +59,7 @@ export function createSupabaseSalesActivityRepository(client: SupabaseClient, sc
           activity_type: input.activityType,
           starts_at: input.startsAt,
           ends_at: input.endsAt,
+          ...(input.scheduleDetails ? { schedule_details: input.scheduleDetails } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq("organization_id", scope.organizationId)
@@ -84,8 +87,7 @@ function assertDepartment(scope: RepositoryScope, departmentId: string) {
 }
 
 function permissionFilter(scope: RepositoryScope) {
-  if (scope.role === "organization_admin") return `employee_id.eq.${scope.employeeId},employee_id.neq.${scope.employeeId}`;
-  if (scope.role === "department_admin" && scope.departmentIds.length) return `employee_id.eq.${scope.employeeId},department_id.in.(${scope.departmentIds.join(",")})`;
+  if (!canActAsSalesRep(scope.role)) throw new Error("このアカウントは営業活動を更新できません。");
   return `employee_id.eq.${scope.employeeId}`;
 }
 

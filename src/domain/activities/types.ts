@@ -10,6 +10,7 @@ export type CreateActivityInput = {
 };
 
 export type UpdateActivityInput = {
+  scheduleDetails?: Record<string, string | boolean>;
   id: string;
   title: string;
   activityType: string;
