@@ -20,14 +20,16 @@ export type RoleplayHistory = { id: string; title: string; product: string; cate
 export async function generateScenarioDraft(input: z.infer<typeof requestSchema>): Promise<{ data?: GeneratedScenario; message?: string }> {
   const context = await getCurrentUser(); if (!context) return { message: "ログインし直してください。" };
   const parsed = requestSchema.safeParse(input); if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "入力内容を確認してください。" };
-  if (!await isAvailableProduct(context.db, context.organizationId, parsed.data.product)) return { message: "有効な商材を選択してください。" };
+  const product = await findAvailableProduct(context.db, context.organizationId, parsed.data.product);
+  if (!product) return { message: "有効な商材を選択してください。" };
+  const productDescription = [product.description, product.notes].map(value => value?.trim()).filter(Boolean).join("\n");
   let analysisQuery = context.db.from("activity_ai_analyses").select("activity_id,analysis,activities!inner(employee_id,department_id)").eq("organization_id", context.organizationId).eq("status", "completed").order("updated_at", { ascending: false }).limit(20);
   if (context.role === "sales_rep") analysisQuery = analysisQuery.eq("activities.employee_id", context.employeeId);
   if (isDepartmentAdmin(context.role)) analysisQuery = analysisQuery.in("activities.department_id", context.departmentIds);
   const { data: rows } = await analysisQuery;
   const analyses = (rows ?? []) as unknown as { activity_id: string; analysis: { improvements?: { point?: string; evidence?: string }[] } | null }[];
   const improvements = analyses.flatMap((row) => row.analysis?.improvements ?? []).map((item) => [item.point, item.evidence].filter(Boolean).join("：")).filter(Boolean).slice(0, 12);
-  try { const generated = await generateRoleplayScenario({ ...parsed.data, pastImprovements: improvements }); return { data: { ...parsed.data, ...generated.scenario, customFields: [], sourceAnalysisIds: analyses.map((row) => row.activity_id), aiModel: generated.model } }; }
+  try { const generated = await generateRoleplayScenario({ ...parsed.data, productDescription, pastImprovements: improvements }); return { data: { ...parsed.data, ...generated.scenario, customFields: [], sourceAnalysisIds: analyses.map((row) => row.activity_id), aiModel: generated.model } }; }
   catch (error) { return { message: error instanceof Error ? error.message : "AIシナリオ生成に失敗しました。" }; }
 }
 
@@ -35,7 +37,7 @@ export async function saveRoleplayScenario(input: GeneratedScenario): Promise<{ 
   const context = await getCurrentUser(); if (!context) return { message: "ログインし直してください。" };
   const parsed = savedScenarioSchema.safeParse(input); if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "入力内容を確認してください。" };
   const value = parsed.data;
-  if (!await isAvailableProduct(context.db, context.organizationId, value.product)) return { message: "有効な商材を選択してください。" };
+  if (!await findAvailableProduct(context.db, context.organizationId, value.product)) return { message: "有効な商材を選択してください。" };
   const { data, error } = await context.db.from("roleplay_scenarios").insert({ organization_id: context.organizationId, created_by: context.userId, product_name: value.product, category: value.category, target_segment: value.target || null, challenge: value.challenge || null, title: value.title, customer_role: value.customerRole || null, difficulty: value.difficulty, summary: value.summary || null, customer_profile: value.customerProfile || null, practice_goal: value.practiceGoal, expected_objections: value.expectedObjections || null, scoring_criteria: value.scoringCriteria || null, custom_fields: value.customFields, source_analysis_ids: value.sourceAnalysisIds, ai_model: value.aiModel || null }).select("id").single();
   if (error || !data) return { message: error?.code === "42P01" ? "ロープレ用のDB更新が未適用です。" : "シナリオを保存できませんでした。" };
   revalidatePath("/roleplay"); return { data: { id: data.id, title: value.title, category: value.category, difficulty: value.difficulty, customer: [value.customerRole, value.customerProfile].filter(Boolean).join("｜"), objective: value.practiceGoal, minutes: 10, product: value.product, expectedObjections: value.expectedObjections, scoringCriteria: value.scoringCriteria, customFields: value.customFields } };
@@ -53,9 +55,16 @@ export async function saveRoleplaySession(input: z.infer<typeof sessionSchema>):
   revalidatePath("/roleplay"); return { data: { id: data.id, title: value.title, product: value.product, category: value.category, score: evaluated.analysis.score, completedAt, employeeName: context.displayName, analysis: evaluated.analysis } };
 }
 
-async function isAvailableProduct(db: SupabaseClient, organizationId: string, name: string) {
-  const { data, error } = await db.from("products").select("name").eq("organization_id", organizationId).eq("status", "active");
-  if (error) return false;
-  const names = (data ?? []).map((item) => item.name);
-  return names.length ? names.includes(name) : defaultProductNames.includes(name as typeof defaultProductNames[number]);
+async function findAvailableProduct(db: SupabaseClient, organizationId: string, name: string) {
+  const activeProducts = () => db.from("products").select("description,notes")
+    .eq("organization_id", organizationId)
+    .eq("status", "active");
+  const { data: product, error } = await activeProducts().eq("name", name).limit(1).maybeSingle();
+  if (error) return null;
+  if (product) return product;
+
+  // 初期商材は、有効なマスタがまだない組織でも利用できる。
+  if (!defaultProductNames.some(productName => productName === name)) return null;
+  const { data: existing, error: lookupError } = await activeProducts().limit(1);
+  return !lookupError && !existing?.length ? { description: null, notes: null } : null;
 }
