@@ -27,16 +27,16 @@
   },
   "dependencies": {
     "@holiday-jp/holiday_jp": "^2.5.1",
+    "@seqmo/browser": "0.1.0",
+    "@seqmo/nextjs": "0.1.0",
     "@supabase/supabase-js": "^2.116.0",
     "firebase": "^12.19.0",
     "firebase-admin": "^13.5.0",
     "lucide-react": "^1.46.0",
-    "next": "16.3.5",
+    "next": "^16.4.6",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "zod": "^4.6.5",
-    "@seqmo/nextjs": "0.1.0",
-    "@seqmo/browser": "0.1.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -44,7 +44,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.5",
+    "eslint-config-next": "^16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
