@@ -103,3 +103,7 @@ export async function captureAuthentication(firebaseUid: string, organizationId:
     try { after(() => runtime.client.flush()); } catch { void runtime.client.flush(); }
   } catch { /* Authentication must survive monitoring delivery failures. */ }
 }
+
+export async function flushMonitoring() {
+  await Promise.allSettled([...runtimes.values()].map(runtime => runtime.client.flush()));
+}
