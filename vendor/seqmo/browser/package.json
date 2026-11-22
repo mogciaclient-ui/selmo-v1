@@ -1,0 +1,1 @@
+{"name":"@seqmo/browser","version":"0.1.0","type":"module","exports":"./index.ts","dependencies":{"rrweb":"^2.2.2"}}

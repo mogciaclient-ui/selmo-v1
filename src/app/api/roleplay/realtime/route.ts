@@ -1,3 +1,4 @@
+import { withSeqmoRoute } from "@/lib/seqmo/route";
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -10,7 +11,7 @@ const schema = z.object({
   scenario: z.object({ title: z.string().max(200), product: z.string().max(200).optional(), category: z.string().max(100), customer: z.string().max(3000), objective: z.string().max(2000), expectedObjections: z.string().max(3000).optional(), scoringCriteria: z.string().max(3000).optional(), customFields: z.array(z.object({ label: z.string().max(100), value: z.string().max(1000) })).max(20).optional() }),
 });
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   const context = await getCurrentUser();
   if (!context) return NextResponse.json({ message: "ログインし直してください。" }, { status: 401 });
   const parsed = schema.safeParse(await request.json().catch(() => null));
@@ -59,3 +60,5 @@ ${customConditions}`,
     return NextResponse.json({ message: "音声AIへの接続が完了しませんでした。再接続してください。" }, { status: 502 });
   }
 }
+
+export const POST = withSeqmoRoute(POSTHandler, "/api/roleplay/realtime", "/api/roleplay/realtime", true);

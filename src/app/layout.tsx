@@ -1,3 +1,4 @@
+import { SeqmoBrowser } from "@/components/monitoring/seqmo-browser";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
@@ -13,7 +14,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       lang="ja"
       className="h-full antialiased"
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">{children}<SeqmoBrowser /></body>
     </html>
   );
 }

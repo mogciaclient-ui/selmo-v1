@@ -1,3 +1,4 @@
+import { withSeqmoRoute } from "@/lib/seqmo/route";
 import { isDepartmentAdmin } from "@/lib/auth/roles";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -10,7 +11,7 @@ const requestSchema = z.object({
   kind: z.enum(["meeting", "voice-reference"]).default("meeting"),
 });
 
-export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+async function POSTHandler(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ message: "ログインし直してください。" }, { status: 401 });
   const { id } = await context.params;
@@ -35,3 +36,5 @@ function safeExtension(fileName: string) {
   const extension = fileName.split(".").at(-1)?.toLowerCase();
   return extension && /^[a-z0-9]{2,5}$/.test(extension) ? extension : "mp3";
 }
+
+export const POST = withSeqmoRoute(POSTHandler, "/api/activities/[id]/audio-upload", "/api/activities/[id]/audio-upload", true);

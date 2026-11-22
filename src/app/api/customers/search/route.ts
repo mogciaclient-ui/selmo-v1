@@ -1,3 +1,4 @@
+import { withSeqmoRoute } from "@/lib/seqmo/route";
 import { z } from "zod";
 import { searchCustomers } from "@/application/customers/search-customers";
 import { createSupabaseSalesActivityRepository } from "@/infrastructure/supabase/sales-activity-repository";
@@ -5,7 +6,7 @@ import { getCurrentUser } from "@/lib/auth/get-current-user";
 
 const querySchema = z.string().trim().min(2).max(100);
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   const context = await getCurrentUser();
   if (!context) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -19,3 +20,5 @@ export async function GET(request: Request) {
     return Response.json({ error: "顧客を検索できませんでした。" }, { status: 500 });
   }
 }
+
+export const GET = withSeqmoRoute(GETHandler, "/api/customers/search", "/api/customers/search", false);

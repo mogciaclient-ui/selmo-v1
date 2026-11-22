@@ -1,5 +1,7 @@
 "use server";
 
+import { isSeqmoAllowed } from "@/lib/seqmo/server";
+
 import { revalidatePath } from "next/cache";
 import { authRoles } from "@/lib/auth/roles";
 import { z } from "zod";
@@ -11,6 +13,7 @@ const createSchema = z.object({ name: z.string().trim().min(1).max(100), email: 
 
 export async function createUser(_: UserActionState, formData: FormData): Promise<UserActionState> {
   const context = await requireOrganizationAdmin();
+  if (!await isSeqmoAllowed(context, { operation: "users.manage", write: true })) return { message: "現在この操作は保護機能で制限されています。" };
   const parsed = createSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "入力内容を確認してください。" };
   const { data: department } = await context.db.from("departments").select("id").eq("id", parsed.data.departmentId).eq("organization_id", context.organizationId).maybeSingle();
@@ -42,6 +45,7 @@ export async function createUser(_: UserActionState, formData: FormData): Promis
 const statusSchema = z.object({ id: z.uuid() });
 export async function changeUserStatus(_: UserActionState, formData: FormData): Promise<UserActionState> {
   const context = await requireOrganizationAdmin();
+  if (!await isSeqmoAllowed(context, { operation: "users.manage", write: true })) return { message: "現在この操作は保護機能で制限されています。" };
   const parsed = statusSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { message: "対象ユーザーが正しくありません。" };
   const { data: target } = await context.db.from("app_users").select("employee_id,firebase_uid,status").eq("id", parsed.data.id).eq("organization_id", context.organizationId).maybeSingle();

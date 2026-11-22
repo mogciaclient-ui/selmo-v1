@@ -1,3 +1,4 @@
+import { isSeqmoAllowed, protectDatabase } from "@/lib/seqmo/server";
 import { canSwitchDevelopmentRole, DEVELOPMENT_ROLE_COOKIE, resolveDevelopmentRole } from "@/lib/auth/development-role";
 import { isDepartmentAdmin } from "@/lib/auth/roles";
 import "server-only";
@@ -39,5 +40,7 @@ export const getCurrentUser = cache(async (): Promise<AuthContext | null> => {
     : isDepartmentAdmin(role)
       ? `${department?.name ?? "部門"}管理${role === "department_admin_sales_rep" ? "・営業兼務" : ""}`
       : department?.name ?? "営業";
-  return { userId: row.id, firebaseUid: row.firebase_uid, organizationId: row.organization_id, employeeId: row.employee_id, email: row.email, displayName: employee?.name ?? row.email, role, canSwitchRole, status: row.status, departmentIds, departmentName: roleLabel, db };
+  const context: AuthContext = { userId: row.id, firebaseUid: row.firebase_uid, organizationId: row.organization_id, employeeId: row.employee_id, email: row.email, displayName: employee?.name ?? row.email, role, canSwitchRole, status: row.status, departmentIds, departmentName: roleLabel, db };
+  if (!await isSeqmoAllowed(context)) return null;
+  return { ...context, db: protectDatabase(context) };
 });

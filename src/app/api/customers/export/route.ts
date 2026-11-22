@@ -1,3 +1,4 @@
+import { withSeqmoRoute } from "@/lib/seqmo/route";
 import { requireAuth } from "@/lib/auth/require-auth";
 
 type ExportRow = {
@@ -11,7 +12,7 @@ type ExportRow = {
   employees: { name: string } | { name: string }[] | null;
 };
 
-export async function GET() {
+async function GETHandler() {
   const context = await requireAuth();
   const header = ["顧客名", "電話番号", "郵便番号", "住所", "ステータス", "担当部署", "営業担当", "データ登録日"];
   const rows: Array<Array<string | null | undefined>> = [];
@@ -40,3 +41,5 @@ export async function GET() {
 
 function first<T>(value: T | T[] | null) { return Array.isArray(value) ? value[0] : value; }
 function csvCell(value: string | null | undefined) { return `"${(value ?? "").replaceAll('"', '""')}"`; }
+
+export const GET = withSeqmoRoute(GETHandler, "/api/customers/export", "export", false);

@@ -1,9 +1,10 @@
+import { withSeqmoRoute } from "@/lib/seqmo/route";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
 import { createSupabaseDashboardRepository } from "@/infrastructure/supabase/dashboard-repository";
 import { completionLabel } from "@/domain/schedules/rules";
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   const context = await getCurrentUser();
   if (!context) return Response.json({ message: "ログインし直してください。" }, { status: 401 });
   const params = request.nextUrl.searchParams;
@@ -23,3 +24,5 @@ export async function GET(request: NextRequest) {
 }
 function date(value: string) { return new Date(value).toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }); }
 function time(value: string) { return new Date(value).toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit" }); }
+
+export const GET = withSeqmoRoute(GETHandler, "/api/schedule/export", "export", false);

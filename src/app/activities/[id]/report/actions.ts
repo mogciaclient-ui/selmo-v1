@@ -1,5 +1,7 @@
 "use server";
 
+import { isSeqmoAllowed } from "@/lib/seqmo/server";
+
 import { findProductOptions } from "@/infrastructure/supabase/product-options-repository";
 import { salesManualContext } from "@/lib/activities/sales-manuals";
 import { missingReportFields } from "@/domain/schedules/report-requirements";
@@ -33,6 +35,7 @@ const reportSchema = z.object({
 export async function saveDetailedActivityReport(_: DetailedReportState, formData: FormData): Promise<DetailedReportState> {
   const context = await getCurrentUser();
   if (!context) return { message: "ログインし直してください。" };
+  if (!await isSeqmoAllowed(context, { operation: "activities.analyze", write: true })) return { message: "現在この操作は保護機能で制限されています。" };
   if (!canActAsSalesRep(context.role)) return { message: "管理者アカウントは閲覧専用です。" };
   const parsed = reportSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "入力内容を確認してください。" };
