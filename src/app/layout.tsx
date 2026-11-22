@@ -1,3 +1,5 @@
+import { after } from "next/server";
+import { flushMonitoring } from "@/lib/seqmo/server";
 import { SeqmoBrowser } from "@/components/monitoring/seqmo-browser";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
@@ -9,6 +11,7 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  after(flushMonitoring);
   return (
     <html
       lang="ja"
