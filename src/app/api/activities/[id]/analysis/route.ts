@@ -1,3 +1,4 @@
+import { withSeqmoRoute } from "@/lib/seqmo/route";
 import { salesManualContext } from "@/lib/activities/sales-manuals";
 import { canActAsSalesRep, isDepartmentAdmin } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
@@ -14,7 +15,7 @@ async function authorize(id: string) {
   return { user, departmentId: data.department_id, employeeId: data.employee_id };
 }
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+async function GETHandler(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const authorized = await authorize(id); if (authorized.response) return authorized.response; const user = authorized.user!;
   const { data, error } = await user.db.from("activity_ai_analyses").select("status,analysis,raw_transcript,separated_transcript,updated_at").eq("organization_id", user.organizationId).eq("activity_id", id).maybeSingle();
@@ -23,7 +24,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   return Response.json(data);
 }
 
-export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
+async function POSTHandler(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const authorized = await authorize(id); if (authorized.response) return authorized.response; const user = authorized.user!;
   if (!canActAsSalesRep(user.role) || authorized.employeeId !== user.employeeId) {
@@ -40,3 +41,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ status: "completed", analysis, raw_transcript: data.raw_transcript, separated_transcript: evaluated.result.dialogue, updated_at: updatedAt });
   } catch (error) { return Response.json({ message: error instanceof Error ? error.message : "再分析に失敗しました。" }, { status: 500 }); }
 }
+
+export const GET = withSeqmoRoute(GETHandler, "/api/activities/[id]/analysis", "/api/activities/[id]/analysis", false);
+
+export const POST = withSeqmoRoute(POSTHandler, "/api/activities/[id]/analysis", "/api/activities/[id]/analysis", true);

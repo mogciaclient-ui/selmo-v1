@@ -1,0 +1,1 @@
+{"name":"@seqmo/nextjs","version":"0.1.0","type":"module","exports":"./index.ts", "dependencies":{"@seqmo/node":"0.1.0"}}

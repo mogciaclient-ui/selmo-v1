@@ -1,5 +1,7 @@
 "use server";
 
+import { isSeqmoAllowed } from "@/lib/seqmo/server";
+
 import { isDepartmentAdmin } from "@/lib/auth/roles";
 
 import { revalidatePath } from "next/cache";
@@ -19,6 +21,7 @@ export type RoleplayHistory = { id: string; title: string; product: string; cate
 
 export async function generateScenarioDraft(input: z.infer<typeof requestSchema>): Promise<{ data?: GeneratedScenario; message?: string }> {
   const context = await getCurrentUser(); if (!context) return { message: "ログインし直してください。" };
+  if (!await isSeqmoAllowed(context, { operation: "roleplay.analyze", write: true })) return { message: "現在この操作は保護機能で制限されています。" };
   const parsed = requestSchema.safeParse(input); if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "入力内容を確認してください。" };
   const product = await findAvailableProduct(context.db, context.organizationId, parsed.data.product);
   if (!product) return { message: "有効な商材を選択してください。" };
@@ -35,6 +38,7 @@ export async function generateScenarioDraft(input: z.infer<typeof requestSchema>
 
 export async function saveRoleplayScenario(input: GeneratedScenario): Promise<{ data?: SavedScenario; message?: string }> {
   const context = await getCurrentUser(); if (!context) return { message: "ログインし直してください。" };
+  if (!await isSeqmoAllowed(context, { operation: "roleplay.analyze", write: true })) return { message: "現在この操作は保護機能で制限されています。" };
   const parsed = savedScenarioSchema.safeParse(input); if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "入力内容を確認してください。" };
   const value = parsed.data;
   if (!await findAvailableProduct(context.db, context.organizationId, value.product)) return { message: "有効な商材を選択してください。" };
@@ -46,6 +50,7 @@ export async function saveRoleplayScenario(input: GeneratedScenario): Promise<{ 
 const sessionSchema = z.object({ scenarioId: z.string().max(100), title: z.string().trim().min(1).max(200), product: z.string().trim().max(200), category: z.string().trim().max(100), objective: z.string().trim().max(2000), expectedObjections: z.string().trim().max(3000), scoringCriteria: z.string().trim().max(3000), customFields: z.array(z.object({ label: z.string().max(100), value: z.string().max(1000) })).max(20), messages: z.array(z.object({ role: z.enum(["customer", "sales"]), text: z.string().max(5000) })).min(2).max(200) });
 export async function saveRoleplaySession(input: z.infer<typeof sessionSchema>): Promise<{ data?: RoleplayHistory; message?: string }> {
   const context = await getCurrentUser(); if (!context) return { message: "ログインし直してください。" };
+  if (!await isSeqmoAllowed(context, { operation: "roleplay.analyze", write: true })) return { message: "現在この操作は保護機能で制限されています。" };
   const parsed = sessionSchema.safeParse(input); if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "ロープレ結果を確認してください。" };
   const value = parsed.data; const scenarioId = z.uuid().safeParse(value.scenarioId).success ? value.scenarioId : null; const completedAt = new Date().toISOString();
   let evaluated; try { evaluated = await analyzeRoleplaySession(value); } catch (error) { return { message: error instanceof Error ? error.message : "ロープレ分析に失敗しました。" }; }

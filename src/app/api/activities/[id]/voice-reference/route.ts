@@ -1,9 +1,10 @@
+import { withSeqmoRoute } from "@/lib/seqmo/route";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
 
 const schema = z.object({ path: z.string().min(1).max(1000), contentType: z.string().min(1).max(100) });
 
-export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+async function POSTHandler(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ message: "ログインし直してください。" }, { status: 401 });
   const { id } = await context.params;
@@ -15,3 +16,5 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (error) return Response.json({ message: "参照音声を保存できませんでした。" }, { status: 500 });
   return Response.json({ success: true });
 }
+
+export const POST = withSeqmoRoute(POSTHandler, "/api/activities/[id]/voice-reference", "/api/activities/[id]/voice-reference", true);
