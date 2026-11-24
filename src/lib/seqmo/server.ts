@@ -12,6 +12,9 @@ type Settings = ClientOptions & { actorSecret: string; protection: boolean; repl
 type Runtime = { client: ReturnType<typeof createClient>; guard?: ReturnType<typeof createSeqmoProtectionAgent>; syncedAt: number };
 const state = globalThis as typeof globalThis & { __selmoSeqmo?: Map<string, Runtime> };
 const runtimes = state.__selmoSeqmo ??= new Map();
+function enabledFor(name: string, organizationId: string) {
+  return (process.env[name] ?? "").split(",").map(value => value.trim()).includes(organizationId);
+}
 export function settingsFor(organizationId: string): Settings | undefined {
   let scopes: Record<string, Partial<Settings>>;
   try { scopes = JSON.parse(process.env.SEQMO_SYSTEMS ?? "{}"); if (!scopes || Array.isArray(scopes) || typeof scopes !== "object") return; } catch { return; }
@@ -20,7 +23,7 @@ export function settingsFor(organizationId: string): Settings | undefined {
     actorSecret: process.env.SEQMO_ACTOR_SECRET, protection: process.env.SEQMO_PROTECTION_ENABLED === "true", replay: process.env.SEQMO_REPLAY_ENABLED === "true",
   } : undefined);
   if (!source?.endpoint || !source.projectId || !source.ingestKey || !source.actorSecret || source.actorSecret.length < 32) return;
-  return { ...source, endpoint: source.endpoint, projectId: source.projectId, ingestKey: source.ingestKey, actorSecret: source.actorSecret, environment: process.env.SEQMO_ENVIRONMENT ?? "production", protection: source.protection === true };
+  return { ...source, endpoint: source.endpoint, projectId: source.projectId, ingestKey: source.ingestKey, actorSecret: source.actorSecret, environment: process.env.SEQMO_ENVIRONMENT ?? "production", protection: source.protection === true || enabledFor("SEQMO_PROTECTION_ORGANIZATIONS", organizationId), replay: source.replay === true || enabledFor("SEQMO_REPLAY_ORGANIZATIONS", organizationId) };
 }
 function runtimeFor(settings: Settings) {
   const key = `${settings.projectId}/${settings.ingestKey}/${settings.protection}`;
@@ -49,6 +52,7 @@ export async function isSeqmoAllowed(context: Pick<AuthContext, "organizationId"
   const settings = settingsFor(context.organizationId);
   if (!settings) {
     // Explicitly enabled protection with incomplete configuration must not silently allow access.
+    if (enabledFor("SEQMO_PROTECTION_ORGANIZATIONS", context.organizationId)) return false;
     if (process.env.SEQMO_ORGANIZATION_ID === context.organizationId && process.env.SEQMO_PROTECTION_ENABLED === "true") return false;
     try { return JSON.parse(process.env.SEQMO_SYSTEMS ?? "{}")[context.organizationId]?.protection !== true; } catch { return false; }
   }
