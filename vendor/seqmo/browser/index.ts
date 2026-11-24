@@ -42,7 +42,12 @@ export function initSeqmoBrowser(options: BrowserOptions) {
   async function captureError() {
     if (stopped || Date.now() - lastUpload < 10_000) return;
     lastUpload = Date.now();
-    const replay = options.replay && buffer.some(event => event.type === 2) ? buffer : undefined;
+    const cutoff = Date.now() - duration;
+    const snapshot = buffer.findIndex(event => event.type === 2 && event.timestamp >= cutoff);
+    const recent = snapshot >= 0 ? buffer.slice(snapshot) : [];
+    const replay = options.replay && recent.length ? [
+      ...(meta ? [{ ...meta, timestamp: recent[0].timestamp }] : []), ...recent,
+    ] : undefined;
     try {
       await fetch(endpoint, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" },
         body: JSON.stringify({ sessionId, replay, event: "browser_error" }), signal: AbortSignal.timeout(5000), keepalive: !replay,
