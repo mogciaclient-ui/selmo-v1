@@ -32,7 +32,7 @@ export function withSeQmoAction<Args extends unknown[], T>(route: string, handle
 
 // Install on the monitored application's server. Authenticate using the host application's session.
 export function createSeqmoBrowserRelay(options: import("@seqmo/core").ClientOptions & {
-  origin: string; authenticate: (request: Request) => Promise<{ actorId: string; ip?: string } | null>;
+  origin: string; allowReplay?: boolean; authenticate: (request: Request) => Promise<{ actorId: string; sessionId?: string; ip?: string } | null>;
 }) {
   return async (request: Request) => {
     if (request.headers.get("origin") !== options.origin) return new Response(null, { status: 403 });
@@ -53,13 +53,17 @@ export function createSeqmoBrowserRelay(options: import("@seqmo/core").ClientOpt
       const data = JSON.parse(new TextDecoder().decode(Buffer.concat(parts)));
       const { validIdentifier, createClient } = await import("@seqmo/core");
       if (!validIdentifier(data.sessionId) || data.event !== "browser_error") return new Response(null, { status: 400 });
+      // The host's authenticated session links replay, login and server audit events.
+      // A client-generated ID is only a fallback for hosts without session integration.
+      const sessionId = identity.sessionId ?? data.sessionId;
+      if (!validIdentifier(sessionId)) return new Response(null, { status: 400 });
       const client = createClient({ ...options, heartbeatIntervalMs: 0 });
-      client.capture({ category: "system", action: "browser_error", result: "failure", severity: "medium", actorId: identity.actorId, ip: identity.ip, sessionId: data.sessionId });
+      client.capture({ category: "system", action: "browser_error", result: "failure", severity: "medium", actorId: identity.actorId, ip: identity.ip, sessionId });
       await client.flush(); client.stop();
-      if (Array.isArray(data.replay)) {
+      if (options.allowReplay !== false && Array.isArray(data.replay)) {
         const endpoint = new URL("/v1/replays", options.endpoint);
         const response = await fetch(endpoint, { method: "POST", headers: { authorization: `Bearer ${options.ingestKey}`, "x-seqmo-project": options.projectId, "content-type": "application/json" },
-          body: JSON.stringify({ sessionId: data.sessionId, actorId: identity.actorId, events: data.replay }), signal: AbortSignal.timeout(5000), redirect: "error" });
+          body: JSON.stringify({ sessionId, actorId: identity.actorId, events: data.replay }), signal: AbortSignal.timeout(5000), redirect: "error" });
         if (!response.ok) return new Response(null, { status: 502 });
       }
       return new Response(null, { status: 202 });

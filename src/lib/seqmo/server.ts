@@ -8,7 +8,7 @@ import type { AuthContext } from "@/lib/auth/types";
 import { FIREBASE_SESSION_COOKIE } from "@/lib/firebase/auth";
 import { guardDatabase, type DatabaseIntent, type AuditResult } from "./guard-database";
 
-type Settings = ClientOptions & { actorSecret: string; protection: boolean };
+type Settings = ClientOptions & { actorSecret: string; protection: boolean; replay?: boolean };
 type Runtime = { client: ReturnType<typeof createClient>; guard?: ReturnType<typeof createSeqmoProtectionAgent>; syncedAt: number };
 const state = globalThis as typeof globalThis & { __selmoSeqmo?: Map<string, Runtime> };
 const runtimes = state.__selmoSeqmo ??= new Map();
@@ -17,13 +17,13 @@ export function settingsFor(organizationId: string): Settings | undefined {
   try { scopes = JSON.parse(process.env.SEQMO_SYSTEMS ?? "{}"); if (!scopes || Array.isArray(scopes) || typeof scopes !== "object") return; } catch { return; }
   const source = scopes[organizationId] ?? (process.env.SEQMO_ORGANIZATION_ID === organizationId ? {
     endpoint: process.env.SEQMO_ENDPOINT, projectId: process.env.SEQMO_PROJECT_ID, ingestKey: process.env.SEQMO_INGEST_KEY,
-    actorSecret: process.env.SEQMO_ACTOR_SECRET, protection: process.env.SEQMO_PROTECTION_ENABLED === "true",
+    actorSecret: process.env.SEQMO_ACTOR_SECRET, protection: process.env.SEQMO_PROTECTION_ENABLED === "true", replay: process.env.SEQMO_REPLAY_ENABLED === "true",
   } : undefined);
   if (!source?.endpoint || !source.projectId || !source.ingestKey || !source.actorSecret || source.actorSecret.length < 32) return;
   return { ...source, endpoint: source.endpoint, projectId: source.projectId, ingestKey: source.ingestKey, actorSecret: source.actorSecret, environment: process.env.SEQMO_ENVIRONMENT ?? "production", protection: source.protection === true };
 }
 function runtimeFor(settings: Settings) {
-  const key = `${settings.projectId}/${settings.ingestKey}`;
+  const key = `${settings.projectId}/${settings.ingestKey}/${settings.protection}`;
   let runtime = runtimes.get(key);
   if (!runtime) {
     const trustedIp = process.env.VERCEL === "1" || process.env.SEQMO_TRUSTED_IP_HEADER;

@@ -99,6 +99,14 @@ export function createSeqmoProtectionAgent(options: ClientOptions & {
         if (!response.ok) return;
         const body = await response.json() as { commands: ProtectionCommand[] };
         if (!Array.isArray(body.commands) || body.commands.length > 100) return;
+        if (body.commands.some(command => !command || typeof command.id !== "string" || !Number.isSafeInteger(command.version) || typeof command.desired !== "boolean" || typeof command.action !== "string" || typeof command.target !== "string" || !Number.isFinite(Date.parse(command.expiresAt))) || new Set(body.commands.map(command => command.id)).size !== body.commands.length) return;
+        // Another instance can acknowledge a release before this instance polls.
+        // Only reconcile against a complete, successful authoritative snapshot.
+        if (!options.apply) {
+          const ids = new Set(body.commands.map(command => command?.id));
+          active = active.filter(command => ids.has(command.id));
+          for (const id of applied.keys()) if (!ids.has(id)) applied.delete(id);
+        }
         for (const command of body.commands) {
           if (!command || typeof command.id !== "string" || typeof command.version !== "number" || typeof command.desired !== "boolean") continue;
           const signature = `${command.desired}/${command.action}/${command.target}`;

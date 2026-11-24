@@ -5,10 +5,15 @@ export function SeqmoBrowser() {
     if (process.env.NEXT_PUBLIC_SEQMO_BROWSER_ENABLED !== "true") return;
     let stopped = false;
     let monitor: { stop(): void } | undefined;
-    void import("@seqmo/browser").then(({ initSeqmoBrowser }) => {
-      if (!stopped) monitor = initSeqmoBrowser({ relayEndpoint: "/api/monitoring/relay", replay: process.env.NEXT_PUBLIC_SEQMO_REPLAY_ENABLED === "true", blockSelector: "[data-seqmo-private],input,textarea,[contenteditable],.seqmo-private" });
+    const controller = new AbortController();
+    void fetch("/api/monitoring/relay", { credentials: "same-origin", cache: "no-store", signal: controller.signal }).then(async response => {
+      if (!response.ok) return;
+      const config = await response.json();
+      if (stopped || config.enabled !== true) return;
+      const { initSeqmoBrowser } = await import("@seqmo/browser");
+      if (!stopped) monitor = initSeqmoBrowser({ relayEndpoint: "/api/monitoring/relay", replay: config.replay === true, bufferMs: config.bufferMs, maxBytes: config.maxBytes, blockSelector: "[data-seqmo-private],input,textarea,[contenteditable],.seqmo-private" });
     }).catch(() => undefined);
-    return () => { stopped = true; monitor?.stop(); };
+    return () => { stopped = true; controller.abort(); monitor?.stop(); };
   }, []);
   return null;
 }
